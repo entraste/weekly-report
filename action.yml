@@ -27,8 +27,8 @@ inputs:
       ties). 'none' forces metrics-only.
     default: auto
   model:
-    description: "Model override for the selected provider. Defaults: claude-sonnet-4-5 (Anthropic),
-      gpt-4o-mini (OpenAI)."
+    description: "Model override for the selected provider. Defaults: claude-sonnet-5 (Anthropic),
+      gpt-5-mini (OpenAI)."
   language:
     description: "Report language: en | es"
     default: en

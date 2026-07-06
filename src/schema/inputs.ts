@@ -85,7 +85,7 @@ export const INPUT_DEFS: readonly InputDef[] = [
   {
     key: 'model',
     description:
-      'Model override for the selected provider. Defaults: claude-sonnet-4-5 (Anthropic), gpt-4o-mini (OpenAI).',
+      'Model override for the selected provider. Defaults: claude-sonnet-5 (Anthropic), gpt-5-mini (OpenAI).',
     required: false,
     secret: false,
     group: 'llm'

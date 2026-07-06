@@ -119,7 +119,7 @@ export const CONFIG_DEFAULTS: ConfigDefaults = {
     botPatterns: ['*[bot]', 'dependabot*', 'renovate*'],
     maxListed: 20
   },
-  report: { title: '{org} Engineering Report', reposMax: 25, narratedRepos: 5 },
+  report: { title: '{org} Engineering Report — {period-label}', reposMax: 25, narratedRepos: 5 },
   llm: {
     provider: 'auto',
     model: '',
@@ -135,8 +135,12 @@ export const CONFIG_DEFAULTS: ConfigDefaults = {
   output: { jobSummary: true, artifact: true, artifactName: 'weekly-report' }
 };
 
-/** Default models per provider, frozen at contract time. */
+/**
+ * Default models per provider, pinned at implementation time.
+ * claude-sonnet-5: native structured outputs (output_config.format) + near-Opus
+ * quality at Sonnet cost. gpt-5-mini: cheap, supports strict json_schema.
+ */
 export const DEFAULT_MODELS = {
-  anthropic: 'claude-sonnet-4-5',
-  openai: 'gpt-4o-mini'
+  anthropic: 'claude-sonnet-5',
+  openai: 'gpt-5-mini'
 } as const;
