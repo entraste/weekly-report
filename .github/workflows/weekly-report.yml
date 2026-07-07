@@ -16,7 +16,7 @@ jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-      - uses: ombustudio/weekly-report@v1
+      - uses: ombustudio/weekly-report@main # TODO: volver a @v1 tras el release v1.0.0
         with:
           github-token: ${{ secrets.ORG_REPORT_GITHUB_TOKEN }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
