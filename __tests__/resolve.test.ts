@@ -25,7 +25,7 @@ describe('resolveConfig', () => {
     expect(cfg.levels).toEqual({ org: true, repo: true, person: true });
     expect(cfg.repos.include).toEqual(['*']);
     expect(cfg.llm.provider).toBe('none'); // no keys → metrics-only
-    expect(cfg.output).toEqual({ jobSummary: true, artifact: true, artifactName: 'weekly-report' });
+    expect(cfg.output).toEqual({ jobSummary: true, artifact: true, artifactName: 'weekly-report-{org}' });
     expect(enabledHighlights(cfg)).toHaveLength(8);
     expect(cfg.dryRun).toBe(false);
   });

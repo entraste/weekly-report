@@ -141,7 +141,8 @@ export const CONFIG_DEFAULTS: ConfigDefaults = {
   slack: { topHighlights: 3, reportUrl: '' },
   email: { to: [], from: '', replyTo: '', subject: '{org} engineering report — {period-label}' },
   limits: { maxRepos: 200, maxPrs: 1000 },
-  output: { jobSummary: true, artifact: true, artifactName: 'weekly-report' }
+  // {org} resolves at runtime — keeps artifact names unique in multi-org matrix runs
+  output: { jobSummary: true, artifact: true, artifactName: 'weekly-report-{org}' }
 };
 
 /**

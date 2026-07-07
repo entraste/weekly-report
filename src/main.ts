@@ -150,7 +150,8 @@ export async function run(): Promise<void> {
   // Dry runs DO upload the artifact — the input contract promises "summary +
   // artifact" so users can inspect the rendered report without delivering it.
   if (config.output.artifact) {
-    const artifact = await uploadReportArtifact(config.output.artifactName, files);
+    const artifactName = config.output.artifactName.replaceAll('{org}', config.org);
+    const artifact = await uploadReportArtifact(artifactName, files);
     deliveryStatus.artifact = artifact.ok ? 'ok' : 'failed';
     if (!artifact.ok) core.warning(artifact.detail);
   }

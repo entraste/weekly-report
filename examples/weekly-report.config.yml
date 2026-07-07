@@ -67,4 +67,4 @@ limits:
 output:
   job-summary: true
   artifact: true
-  artifact-name: weekly-report
+  artifact-name: 'weekly-report-{org}' # {org} resolves at runtime (unique in multi-org matrices)

@@ -67141,7 +67141,8 @@ var CONFIG_DEFAULTS = {
   slack: { topHighlights: 3, reportUrl: "" },
   email: { to: [], from: "", replyTo: "", subject: "{org} engineering report \u2014 {period-label}" },
   limits: { maxRepos: 200, maxPrs: 1e3 },
-  output: { jobSummary: true, artifact: true, artifactName: "weekly-report" }
+  // {org} resolves at runtime — keeps artifact names unique in multi-org matrix runs
+  output: { jobSummary: true, artifact: true, artifactName: "weekly-report-{org}" }
 };
 var DEFAULT_MODELS = {
   anthropic: "claude-sonnet-5",
@@ -113360,7 +113361,8 @@ async function run() {
     if (!summary2.ok) warning(summary2.detail);
   }
   if (config.output.artifact) {
-    const artifact = await uploadReportArtifact(config.output.artifactName, files);
+    const artifactName = config.output.artifactName.replaceAll("{org}", config.org);
+    const artifact = await uploadReportArtifact(artifactName, files);
     deliveryStatus.artifact = artifact.ok ? "ok" : "failed";
     if (!artifact.ok) warning(artifact.detail);
   }
