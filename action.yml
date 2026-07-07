@@ -1,6 +1,6 @@
 # Generated from src/schema — if you edit inputs here, update src/schema/inputs.ts
 # (the drift test in __tests__/action-yml-drift.test.ts enforces parity).
-name: Org Weekly Report (AI)
+name: OmbuPulse
 description: Org-wide activity digest with an LLM-written narrative (Claude or OpenAI). Collects
   PRs, issues, reviews and commits across all org repos and delivers to Slack, email (Resend), the
   job summary and an artifact. Reports in English or Spanish.

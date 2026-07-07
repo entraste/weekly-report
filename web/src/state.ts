@@ -54,7 +54,7 @@ export interface ConfiguratorState {
 }
 
 export const DEFAULT_STATE: ConfiguratorState = {
-  actionRef: 'OWNER/weekly-report',
+  actionRef: 'ombu/ombupulse',
   actionVersion: 'v1',
   targetRepo: '',
   org: '',

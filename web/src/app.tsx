@@ -139,7 +139,7 @@ export function App() {
     <div class="layout">
       <header class="hero">
         <h1>
-          Org Weekly Report <span class="ai-badge">AI</span>
+          OmbuPulse <span class="ai-badge">AI</span>
         </h1>
         <p>
           Configure the GitHub Action that turns your org's activity into a narrated report — Slack, email, English or
@@ -151,7 +151,7 @@ export function App() {
         <div class="form-column">
           <Section step={1} title="Action & organization">
             <Field label="Published action (owner/repo)" hint="Where this action lives once published to the Marketplace.">
-              <TextInput mono value={v.actionRef} onInput={(x) => set({ actionRef: x })} placeholder="acme/weekly-report" />
+              <TextInput mono value={v.actionRef} onInput={(x) => set({ actionRef: x })} placeholder="ombu/ombupulse" />
             </Field>
             <Field label="Target repo for the workflow (optional)" hint="Enables one-click 'Create in GitHub' links (assumes the default branch is main).">
               <TextInput mono value={v.targetRepo} onInput={(x) => set({ targetRepo: x })} placeholder="acme/reports" />
@@ -468,7 +468,7 @@ export function App() {
       <footer>
         <p>
           Generated files reference secrets by name only — values stay in GitHub. · Cron fires in UTC and is best-effort.
-          · <a href="https://github.com/OWNER/weekly-report">Action source &amp; docs</a>
+          · <a href="https://github.com/ombu/ombupulse">Action source &amp; docs</a>
         </p>
       </footer>
     </div>

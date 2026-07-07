@@ -3,8 +3,8 @@
  * inputs.ts). Consumed by the action.yml drift test and the configurator.
  */
 export const ACTION_META = {
-  /** Marketplace name — must be globally unique. Final name TBD before publish. */
-  name: 'Org Weekly Report (AI)',
+  /** Marketplace name — globally unique. */
+  name: 'OmbuPulse',
   description:
     'Org-wide activity digest with an LLM-written narrative (Claude or OpenAI). ' +
     'Collects PRs, issues, reviews and commits across all org repos and delivers to Slack, ' +

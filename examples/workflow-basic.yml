@@ -22,7 +22,7 @@ jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-      - uses: OWNER/weekly-report@v1 # ← replace OWNER after publishing
+      - uses: ombu/ombupulse@v1
         with:
           # Org-wide read access. The default GITHUB_TOKEN only sees THIS repo —
           # create an org fine-grained PAT (All repositories; read-only:

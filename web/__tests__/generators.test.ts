@@ -129,7 +129,7 @@ describe('lint', () => {
     expect(lint(makeState({ levels: { org: false, repo: false, person: false } })).some((w) => w.level === 'error')).toBe(
       true
     );
-    expect(messages(makeState({ actionRef: 'OWNER/weekly-report' }))).toMatch(/Replace OWNER/);
+    expect(messages(makeState({ actionRef: 'OWNER/ombupulse' }))).toMatch(/Replace the OWNER/);
   });
 });
 

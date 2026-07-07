@@ -1,4 +1,4 @@
-# Org Weekly Report (AI)
+# OmbuPulse
 
 **Org-wide GitHub activity digest with an LLM-written narrative — delivered to Slack, email, the job summary and an artifact. Reports in English or Spanish.**
 
@@ -27,7 +27,7 @@ jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-      - uses: OWNER/weekly-report@v1
+      - uses: ombu/ombupulse@v1
         with:
           github-token: ${{ secrets.ORG_REPORT_GITHUB_TOKEN }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -64,7 +64,7 @@ Store it as a secret (e.g. `ORG_REPORT_GITHUB_TOKEN`) and pass it as `github-tok
 | `report-levels` | `org,repo,person` | Which cuts to include. |
 | `highlights` | `all` | `all`, `none`, or a comma-separated list of highlight ids. |
 | `period` | `weekly` | `daily` \| `weekly` \| `biweekly` \| `monthly` \| `custom`. Window = previous **complete** calendar period in `timezone`. |
-| `start-date` / `end-date` | — | `YYYY-MM-DD`, required for `period: custom`. Wire them to `workflow_dispatch` inputs for on-demand reports. |
+| `start-date` / `end-date` | — | `YYYY-MM-DD`. Providing **both** switches the window to that custom range — wire them to `workflow_dispatch` inputs for on-demand reports. |
 | `timezone` | `UTC` | IANA timezone for window boundaries. |
 | `repos-include` / `repos-exclude` | `*` / — | Repo-name globs. |
 | `slack-webhook-url` | — | Slack incoming webhook. |
@@ -72,7 +72,7 @@ Store it as a secret (e.g. `ORG_REPORT_GITHUB_TOKEN`) and pass it as `github-tok
 | `email-to` / `email-from` | — | Recipients (comma-separated) and verified sender. Required with `resend-api-key`. |
 | `email-subject` | `{org} engineering report — {period-label}` | Placeholders: `{org}` `{start}` `{end}` `{period-label}`. |
 | `config-file` | `.github/weekly-report.yml` | Optional rich config, fetched via the API (no checkout needed). |
-| `dry-run` | `false` | Render + summary + files, but skip the LLM call and Slack/email sends. |
+| `dry-run` | `false` | Render + summary + artifact, but skip the LLM call and Slack/email sends. |
 
 **Outputs**: `report-markdown-path`, `report-html-path`, `metrics-json-path`, `delivery-status` (JSON per channel), `llm-usage` (tokens + estimated cost).
 
@@ -91,7 +91,7 @@ Precedence: **inputs > config file > defaults** (an input left at its default le
 
 ## Period semantics
 
-The window is always the **previous complete calendar period** in your timezone — reruns and cron delays never shift or double-count it. `biweekly` uses a weekly cron + ISO-week parity (`biweekly-anchor: even|odd`); off-weeks exit successfully with a notice, and manual `workflow_dispatch` runs always produce a report.
+The window is always the **previous complete calendar period** in your timezone — reruns and cron delays never shift or double-count it. `biweekly` uses a weekly cron + fortnight parity (`biweekly-anchor: even|odd`, continuous across year boundaries); off-weeks exit successfully with a notice, and manual `workflow_dispatch` runs always produce a report.
 
 ## Security & privacy by design
 
@@ -105,7 +105,7 @@ The window is always the **previous complete calendar period** in your timezone 
 
 A static web configurator (GitHub Pages) generates your workflow YAML + config file from a form — including auth path (PAT vs GitHub App), schedule builder, language and delivery setup. It never sees your secrets: it only emits `${{ secrets.X }}` references plus a checklist of secrets to create.
 
-→ **https://OWNER.github.io/weekly-report/** (after enabling Pages on this repo)
+→ **https://ombu.github.io/ombupulse/** (after enabling Pages on this repo)
 
 ## Development
 
@@ -120,7 +120,7 @@ npm run check   # typecheck + lint + tests + build
 
 1. `npm run check` green, `dist/` committed.
 2. Tag: `git tag v1.0.0 && git push origin v1.0.0` — `release.yml` creates the GitHub release and force-moves the floating `v1` tag (plain tag, immutable-releases friendly).
-3. First publish (manual, once): repo → Releases → edit the release → tick **“Publish this Action to the GitHub Marketplace”**, pick categories (suggested: *Reporting*, *Project management*), verify the unique marketplace name, publish. Requires 2FA and a public repo.
+3. First publish (manual, once): repo → Releases → edit the release → tick **“Publish this Action to the GitHub Marketplace”**, pick categories (suggested: *Reporting*, *Project management*), verify the marketplace name (OmbuPulse), publish. Requires 2FA and a public repo.
 4. Repeat the checkbox on subsequent releases (no API exists for it).
 
 ## License

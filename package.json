@@ -1,5 +1,5 @@
 {
-  "name": "org-weekly-report-action",
+  "name": "ombupulse-action",
   "version": "0.1.0",
   "private": true,
   "description": "Org-wide activity digest GitHub Action with an LLM-written narrative (Claude or OpenAI). Delivers to Slack, email (Resend), job summary and artifact.",

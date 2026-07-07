@@ -24,7 +24,7 @@ jobs:
           private-key: ${{ secrets.REPORT_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }} # empty `repositories` = all org repos
 
-      - uses: OWNER/weekly-report@v1 # ← replace OWNER after publishing
+      - uses: ombu/ombupulse@v1
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
