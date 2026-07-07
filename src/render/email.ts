@@ -4,7 +4,7 @@
  */
 import { humanDuration, t } from '../i18n/index.js';
 import type { Report } from '../metrics/types.js';
-import { keyNumberRows, renderHighlight } from './markdown.js';
+import { hasTrackedActivity, keyNumberRows, renderHighlight } from './markdown.js';
 
 function escapeHtml(s: string): string {
   return s
@@ -17,9 +17,13 @@ function escapeHtml(s: string): string {
 /** Escaped markdown (links + bold) → minimal inline HTML. */
 export function mdInlineToHtml(md: string): string {
   return escapeHtml(md)
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" style="color:#0969da;text-decoration:none;">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, text: string, url: string) =>
+      // Only http(s) targets become anchors — javascript:/data: render as text.
+      /^https?:\/\//i.test(url) ? `<a href="${url}" style="color:#0969da;text-decoration:none;">${text}</a>` : match
+    )
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/_([^_]+)_/g, '<em>$1</em>');
+    // word-boundary-aware italics so snake_case identifiers survive
+    .replace(/(^|[\s(>])_([^_\n]+)_(?=$|[\s).,;:!?<])/g, '$1<em>$2</em>');
 }
 
 const CELL = 'padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:14px;';
@@ -65,7 +69,7 @@ export function renderEmailHtml(report: Report): string {
 
   // Key numbers
   parts.push(sectionTitle(t(lang, 'section.keyNumbers')));
-  if (report.orgMetrics.prsOpened + report.orgMetrics.prsMerged + report.orgMetrics.commits === 0) {
+  if (!hasTrackedActivity(report)) {
     parts.push(`<p style="font-size:14px;color:#57606a;">${escapeHtml(t(lang, 'report.noActivity'))}</p>`);
   } else {
     parts.push(table([' ', ' '], keyNumberRows(report).map(([label, value]) => [escapeHtml(label), escapeHtml(value)])));
@@ -105,7 +109,7 @@ export function renderEmailHtml(report: Report): string {
           t(lang, 'table.repo'),
           t(lang, 'table.prsMerged'),
           t(lang, 'table.prsOpened'),
-          t(lang, 'table.openPrs'),
+          t(lang, 'table.openPrsNow'),
           t(lang, 'table.issues'),
           t(lang, 'table.commits')
         ],
@@ -157,7 +161,7 @@ export function renderEmailHtml(report: Report): string {
       startDate: report.window.startDate,
       endDate: report.window.endDate,
       timezone: report.window.timezone,
-      period: report.window.period
+      period: t(lang, `periodWord.${report.window.period}` as Parameters<typeof t>[1])
     }),
     t(lang, 'appendix.repos', { scanned: report.orgMetrics.totalReposScanned })
   ];

@@ -17,13 +17,16 @@ export interface FileConfigResult {
   warnings: string[];
 }
 
+/** Documented schema keys that merely CONTAIN a secret-looking word. */
+const SECRET_STRIP_EXEMPT = new Set(['max-input-tokens', 'max-output-tokens', 'titles-per-repo']);
+
 /** Recursively drop secret-looking keys, collecting warnings. */
 export function stripSecretKeys(value: unknown, path: string, warnings: string[]): unknown {
   if (Array.isArray(value)) return value.map((v, i) => stripSecretKeys(v, `${path}[${i}]`, warnings));
   if (typeof value !== 'object' || value === null) return value;
   const out: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(value)) {
-    if (SECRET_KEY_PATTERN.test(key)) {
+    if (!SECRET_STRIP_EXEMPT.has(key.toLowerCase()) && SECRET_KEY_PATTERN.test(key)) {
       warnings.push(`Config file: ignored key "${path ? `${path}.` : ''}${key}" — secrets must be passed as action inputs, never in the config file.`);
       continue;
     }

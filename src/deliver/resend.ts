@@ -46,8 +46,9 @@ export async function deliverEmail(
   if (failures.length === 0) {
     return { ok: true, detail: `ok (${message.to.length} recipient${message.to.length === 1 ? '' : 's'})` };
   }
+  // Partial delivery is a failure: some recipients never got the report.
   return {
-    ok: failures.length < batches.length,
+    ok: false,
     detail: `Resend: ${batches.length - failures.length}/${batches.length} batches sent; errors: ${failures.join(' | ')}`
   };
 }

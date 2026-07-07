@@ -103,8 +103,10 @@ export interface Report {
   narrativeStatus: NarrativeStatus;
   llmUsage: LlmUsage | null;
   warnings: string[];
-  /** Workflow run URL (link target in Slack/email). */
+  /** Workflow run URL ("view run" target in the email footer). */
   runUrl: string;
+  /** Slack "view full report" target: slack.report-url override, else runUrl. */
+  slackReportUrl: string;
   /** How many highlights the Slack summary shows. */
   slackTopHighlights: number;
 }

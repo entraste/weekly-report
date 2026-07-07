@@ -162,6 +162,15 @@ describe('resolveConfig', () => {
     expect(ok.endDate).toBe('2026-06-15');
   });
 
+  it('providing both dates auto-switches the window to custom', () => {
+    const cfg = resolveConfig({
+      getInput: stubInputs({ ...BASE, 'start-date': '2026-06-01', 'end-date': '2026-06-15' }),
+      repositoryOwner: 'acme'
+    });
+    expect(cfg.period).toBe('custom');
+    expect(cfg.startDate).toBe('2026-06-01');
+  });
+
   it('dry-run parses as boolean', () => {
     const cfg = resolveConfig({ getInput: stubInputs({ ...BASE, 'dry-run': 'true' }), repositoryOwner: 'acme' });
     expect(cfg.dryRun).toBe(true);

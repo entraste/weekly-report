@@ -72,9 +72,9 @@ export async function run(): Promise<void> {
     config.period === 'biweekly' &&
     !biweeklyShouldRun({ nowMs, timezone: config.timezone, anchor: config.biweeklyAnchor, isManualDispatch })
   ) {
-    const notice = `Biweekly parity: this ISO week does not match biweekly-anchor=${config.biweeklyAnchor}; skipping (next scheduled week will run).`;
+    const notice = `Biweekly parity: this week does not match biweekly-anchor=${config.biweeklyAnchor}; skipping (next scheduled week will run).`;
     core.notice(notice);
-    await core.summary.addRaw(`> ${notice}`).write();
+    await writeJobSummary(`> ${notice}`);
     return;
   }
 
@@ -100,10 +100,14 @@ export async function run(): Promise<void> {
   let narrative = null;
   let narrativeStatus: NarrativeStatus;
   let llmUsage = null;
+  // A deliberate opt-out (llm-provider: none via input or config file) is not
+  // a misconfiguration — no nagging warning in that case.
+  const explicitNone =
+    core.getInput('llm-provider') === 'none' || fileResult.config?.llm?.provider === 'none';
   if (config.dryRun) {
     narrativeStatus = 'skipped-dry-run';
   } else if (config.llm.provider === 'none') {
-    narrativeStatus = config.llm.anthropicApiKey || config.llm.openaiApiKey ? 'skipped-disabled' : 'skipped-no-key';
+    narrativeStatus = explicitNone ? 'skipped-disabled' : 'skipped-no-key';
     if (narrativeStatus === 'skipped-no-key') {
       core.warning('No LLM API key configured — generating a metrics-only report. Add anthropic-api-key or openai-api-key for a narrative.');
     }
@@ -143,7 +147,9 @@ export async function run(): Promise<void> {
     if (!summary.ok) core.warning(summary.detail);
   }
 
-  if (config.output.artifact && !config.dryRun) {
+  // Dry runs DO upload the artifact — the input contract promises "summary +
+  // artifact" so users can inspect the rendered report without delivering it.
+  if (config.output.artifact) {
     const artifact = await uploadReportArtifact(config.output.artifactName, files);
     deliveryStatus.artifact = artifact.ok ? 'ok' : 'failed';
     if (!artifact.ok) core.warning(artifact.detail);

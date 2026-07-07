@@ -133,14 +133,15 @@ export const INPUT_DEFS: readonly InputDef[] = [
   },
   {
     key: 'start-date',
-    description: 'ISO date (YYYY-MM-DD), required when period=custom. Interpreted in `timezone`.',
+    description:
+      'ISO date (YYYY-MM-DD), interpreted in `timezone`. Providing BOTH start-date and end-date switches the window to that custom range (period becomes custom).',
     required: false,
     secret: false,
     group: 'period'
   },
   {
     key: 'end-date',
-    description: 'ISO date (YYYY-MM-DD), required when period=custom. Inclusive.',
+    description: 'ISO date (YYYY-MM-DD), inclusive. See start-date.',
     required: false,
     secret: false,
     group: 'period'
@@ -251,7 +252,7 @@ export const OUTPUT_DEFS: readonly OutputDef[] = [
   {
     key: 'llm-usage',
     description:
-      'JSON: {"provider":"anthropic","model":"claude-sonnet-4-5","inputTokens":6200,"outputTokens":1400,"estimatedCostUsd":0.04}'
+      'JSON: {"provider":"anthropic","model":"claude-sonnet-5","inputTokens":6200,"outputTokens":1400,"estimatedCostUsd":0.04}'
   }
 ] as const;
 

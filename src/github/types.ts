@@ -54,9 +54,11 @@ export interface CollectedData {
   repos: RepoInfo[];
   prsOpened: PrLite[];
   prsMerged: PrLite[];
+  /** PRs closed without merging inside the window (review-coverage + context). */
+  prsClosedUnmerged: PrLite[];
   /** Currently-open PRs, oldest first (first pages up to the fetch cap). */
   openPrs: PrLite[];
-  /** True total of open PRs org-wide (search issueCount, not just fetched page). */
+  /** Total open PRs across the IN-SCOPE repos (sum of exact per-repo counts). */
   openPrTotalCount: number;
   issuesOpened: IssueLite[];
   issuesClosed: IssueLite[];

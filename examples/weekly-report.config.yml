@@ -7,7 +7,7 @@
 timezone: UTC # IANA, e.g. America/Montevideo
 language: en # en | es
 period: weekly # daily | weekly | biweekly | monthly | custom
-biweekly-anchor: even # even | odd ISO week (only for period: biweekly)
+biweekly-anchor: even # even | odd fortnight (only for period: biweekly)
 
 repos:
   include: ['*'] # name globs

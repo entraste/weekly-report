@@ -50,6 +50,10 @@ describe('slack renderer', () => {
     expect(mdToMrkdwn('see [api#7](https://x.y/pr/7) by **dave**')).toBe('see <https://x.y/pr/7|api#7> by *dave*');
   });
 
+  it('escapes Slack control sequences from untrusted text', () => {
+    expect(mdToMrkdwn('deploy <!channel> & profit')).toBe('deploy &lt;!channel&gt; &amp; profit');
+  });
+
   it('shows top-3 highlights only', () => {
     const text = JSON.stringify(payload.blocks);
     expect(text).toContain('Oldest open PR');

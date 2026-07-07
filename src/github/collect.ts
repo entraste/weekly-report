@@ -119,7 +119,7 @@ async function searchAll<T>(
         'E_SEARCH_CAP',
         `Search "${opts.label}" matched ${totalCount} items — beyond GitHub's 1000-result cap.`,
         [
-          'Narrow the window (shorter period) or exclude high-churn repos with repos-exclude.',
+          'Use a shorter period (the search is org-wide; repos-include/exclude filter results AFTER the search, so they do not reduce this count).',
           'Automatic date-partitioning for large orgs is on the roadmap.'
         ]
       );
@@ -222,9 +222,11 @@ async function collectRepoStats(
     >;
     let result: RepoStatsResult;
     try {
+      // history(since/until) bounds are INCLUSIVE — subtract 1s from our
+      // exclusive end so a commit exactly on the boundary lands in one window.
       result = await client.graphql<RepoStatsResult>(query, {
         since: new Date(window.startUtcMs).toISOString(),
-        until: new Date(window.endUtcMs).toISOString()
+        until: new Date(window.endUtcMs - 1000).toISOString()
       });
     } catch (error) {
       // GraphQL "errors" responses may still carry partial data (e.g. SAML-gated repos).
@@ -257,17 +259,33 @@ export async function collect(
   // Search ranges are inclusive on both ends; subtract 1s from the exclusive bound.
   const endIso = toSearchTimestamp(window.endUtcMs - 1000);
   const q = searchQualifiers(config.org, startIso, endIso);
+  const windowCap = Math.min(config.limits.maxPrs, SEARCH_RESULT_CAP);
 
-  const [prsOpenedRes, prsMergedRes, issuesOpenedRes, issuesClosedRes, openPrsRes] = [
-    await searchAll<GraphQlPrNode>(client, SEARCH_PRS_QUERY, q.prsOpened, { label: 'PRs opened', warnings }),
-    await searchAll<GraphQlPrNode>(client, SEARCH_PRS_QUERY, q.prsMerged, { label: 'PRs merged', warnings }),
+  const [prsOpenedRes, prsMergedRes, prsClosedRes, issuesOpenedRes, issuesClosedRes, openPrsRes] = [
+    await searchAll<GraphQlPrNode>(client, SEARCH_PRS_QUERY, q.prsOpened, {
+      label: 'PRs opened',
+      warnings,
+      fetchCap: windowCap
+    }),
+    await searchAll<GraphQlPrNode>(client, SEARCH_PRS_QUERY, q.prsMerged, {
+      label: 'PRs merged',
+      warnings,
+      fetchCap: windowCap
+    }),
+    await searchAll<GraphQlPrNode>(client, SEARCH_PRS_QUERY, q.prsClosedUnmerged, {
+      label: 'PRs closed without merge',
+      warnings,
+      fetchCap: windowCap
+    }),
     await searchAll<GraphQlIssueNode>(client, SEARCH_ISSUES_QUERY, q.issuesOpened, {
       label: 'Issues opened',
-      warnings
+      warnings,
+      fetchCap: windowCap
     }),
     await searchAll<GraphQlIssueNode>(client, SEARCH_ISSUES_QUERY, q.issuesClosed, {
       label: 'Issues closed',
-      warnings
+      warnings,
+      fetchCap: windowCap
     }),
     await searchAll<GraphQlPrNode>(client, SEARCH_PRS_QUERY, q.openPrs, {
       label: 'Open PRs',
@@ -287,14 +305,19 @@ export async function collect(
     warnings
   );
 
+  // In-scope open-PR total from the exact per-repo counts — the raw search
+  // issueCount would include glob-excluded/fork repos.
+  const openPrTotalCount = Object.values(openPrCountByRepo).reduce((a, b) => a + b, 0);
+
   return {
     org: config.org,
     window,
     repos,
     prsOpened: inScope(prsOpenedRes.nodes.map(toPrLite)),
     prsMerged: inScope(prsMergedRes.nodes.map(toPrLite)),
+    prsClosedUnmerged: inScope(prsClosedRes.nodes.map(toPrLite)),
     openPrs: inScope(openPrsRes.nodes.map(toPrLite)),
-    openPrTotalCount: openPrsRes.totalCount,
+    openPrTotalCount,
     issuesOpened: inScope(issuesOpenedRes.nodes.map(toIssueLite)),
     issuesClosed: inScope(issuesClosedRes.nodes.map(toIssueLite)),
     commitsByRepo,

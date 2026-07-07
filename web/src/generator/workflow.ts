@@ -35,14 +35,23 @@ export function buildWithEntries(state: ConfiguratorState): Record<string, strin
 
   if (state.org.trim()) entries['org'] = state.org.trim();
 
-  if (state.llm === 'anthropic') entries['anthropic-api-key'] = `\${{ secrets.${state.anthropicSecret} }}`;
-  if (state.llm === 'openai') entries['openai-api-key'] = `\${{ secrets.${state.openaiSecret} }}`;
+  // Explicit provider pinning: a missing repo secret then fails loudly with
+  // E_LLM_CONFIG instead of silently degrading to a metrics-only report.
+  if (state.llm === 'anthropic') {
+    entries['anthropic-api-key'] = `\${{ secrets.${state.anthropicSecret} }}`;
+    entries['llm-provider'] = 'anthropic';
+  }
+  if (state.llm === 'openai') {
+    entries['openai-api-key'] = `\${{ secrets.${state.openaiSecret} }}`;
+    entries['llm-provider'] = 'openai';
+  }
   if (state.llm === 'none') entries['llm-provider'] = 'none';
 
   if (state.language !== 'en') entries['language'] = state.language;
 
   const levels = ['org', 'repo', 'person'].filter((l) => state.levels[l as keyof typeof state.levels]);
-  if (levels.length < 3) entries['report-levels'] = levels.join(',');
+  // Zero levels is a lint error; emitting '' would silently mean "all levels".
+  if (levels.length > 0 && levels.length < 3) entries['report-levels'] = levels.join(',');
 
   const enabled = Object.entries(state.highlights).filter(([, on]) => on).map(([id]) => id);
   if (enabled.length === 0) entries['highlights'] = 'none';

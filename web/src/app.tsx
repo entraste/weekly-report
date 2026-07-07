@@ -27,12 +27,14 @@ const HIGHLIGHT_LABELS: Record<HighlightId, string> = {
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function Field(props: { label: string; hint?: string; children: ComponentChildren }) {
+  // div, not label: several fields wrap multiple controls (toggles, segments)
+  // and a shared <label> would misdirect clicks to the first control.
   return (
-    <label class="field">
+    <div class="field">
       <span class="field-label">{props.label}</span>
       {props.children}
       {props.hint && <span class="field-hint">{props.hint}</span>}
-    </label>
+    </div>
   );
 }
 
@@ -68,11 +70,12 @@ function Segmented<T extends string>(props: {
   onChange: (v: T) => void;
 }) {
   return (
-    <div class="segmented" role="radiogroup">
+    <div class="segmented">
       {props.options.map((opt) => (
         <button
           key={opt.value}
           type="button"
+          aria-pressed={props.value === opt.value}
           class={props.value === opt.value ? 'active' : ''}
           onClick={() => props.onChange(opt.value)}
         >
@@ -128,6 +131,9 @@ export function App() {
 
   const set = (patch: Partial<ConfiguratorState>) => update(patch);
   const v = s.value;
+  // A stale Config tab (settings changed so no file is needed) falls back to
+  // the workflow view instead of rendering an empty panel.
+  const activeTab = tab.value === 'config' && !configYaml.value ? 'workflow' : tab.value;
 
   return (
     <div class="layout">
@@ -147,7 +153,7 @@ export function App() {
             <Field label="Published action (owner/repo)" hint="Where this action lives once published to the Marketplace.">
               <TextInput mono value={v.actionRef} onInput={(x) => set({ actionRef: x })} placeholder="acme/weekly-report" />
             </Field>
-            <Field label="Target repo for the workflow (optional)" hint="Enables one-click 'Create in GitHub' links.">
+            <Field label="Target repo for the workflow (optional)" hint="Enables one-click 'Create in GitHub' links (assumes the default branch is main).">
               <TextInput mono value={v.targetRepo} onInput={(x) => set({ targetRepo: x })} placeholder="acme/reports" />
             </Field>
             <Field label="Organization to report on" hint="Empty = the owner of the repo running the workflow.">
@@ -217,7 +223,7 @@ export function App() {
                     min={0}
                     max={23}
                     value={v.hour}
-                    onInput={(e) => set({ hour: Number((e.target as HTMLInputElement).value) || 0 })}
+                    onInput={(e) => set({ hour: Math.min(23, Math.max(0, Number((e.target as HTMLInputElement).value) || 0)) })}
                   />
                   <span>:</span>
                   <input
@@ -225,7 +231,7 @@ export function App() {
                     min={0}
                     max={59}
                     value={v.minute}
-                    onInput={(e) => set({ minute: Number((e.target as HTMLInputElement).value) || 0 })}
+                    onInput={(e) => set({ minute: Math.min(59, Math.max(0, Number((e.target as HTMLInputElement).value) || 0)) })}
                   />
                 </div>
               </Field>
@@ -397,7 +403,7 @@ export function App() {
               </button>
             </div>
 
-            {tab.value === 'workflow' && (
+            {activeTab === 'workflow' && (
               <div class="output">
                 <div class="output-actions">
                   <span class="filename mono">.github/workflows/weekly-report.yml</span>
@@ -417,7 +423,7 @@ export function App() {
               </div>
             )}
 
-            {tab.value === 'config' && configYaml.value && (
+            {activeTab === 'config' && configYaml.value && (
               <div class="output">
                 <div class="output-actions">
                   <span class="filename mono">.github/weekly-report.yml</span>
@@ -437,7 +443,7 @@ export function App() {
               </div>
             )}
 
-            {tab.value === 'secrets' && (
+            {activeTab === 'secrets' && (
               <div class="output secrets-list">
                 <p class="note">
                   Create these in the target repo: <em>Settings → Secrets and variables → Actions</em>. This page never

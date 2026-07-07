@@ -79,10 +79,12 @@ export function createAnthropicAdapter(apiKey: string, fetchImpl: typeof fetch =
         .filter((block) => block.type === 'text' && typeof block.text === 'string')
         .map((block) => block.text)
         .join('');
-      if (!text) throw new LlmError('Anthropic returned an empty response.');
+      // Order matters: adaptive-thinking models can burn the whole budget and
+      // return no text — that is a truncation, not an "empty response".
       if (data.stop_reason === 'max_tokens') {
-        throw new LlmError('Anthropic response truncated (max_tokens) — narrative JSON incomplete.');
+        throw new LlmError('Anthropic response truncated (max_tokens) — raise llm.max-output-tokens.');
       }
+      if (!text) throw new LlmError('Anthropic returned an empty response.');
 
       return {
         text,

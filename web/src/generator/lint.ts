@@ -3,6 +3,19 @@
  */
 import type { ConfiguratorState } from '../state.js';
 
+const VALID_SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function usedSecretNames(state: ConfiguratorState): Array<[string, string]> {
+  const names: Array<[string, string]> = [];
+  if (state.auth === 'pat') names.push(['GitHub token secret', state.githubTokenSecret]);
+  else names.push(['App ID variable', state.appIdVar], ['App key secret', state.appKeySecret]);
+  if (state.llm === 'anthropic') names.push(['Anthropic secret', state.anthropicSecret]);
+  if (state.llm === 'openai') names.push(['OpenAI secret', state.openaiSecret]);
+  if (state.slackEnabled) names.push(['Slack secret', state.slackSecret]);
+  if (state.emailEnabled) names.push(['Resend secret', state.resendSecret]);
+  return names;
+}
+
 export interface Warning {
   level: 'error' | 'warn' | 'info';
   message: string;
@@ -43,7 +56,25 @@ export function lint(state: ConfiguratorState): Warning[] {
     warnings.push({
       level: 'info',
       message:
-        'Biweekly runs use a weekly cron; the action skips off-weeks by ISO-week parity. Manual runs always produce a report.'
+        'Biweekly runs use a weekly cron; the action skips alternate weeks (fortnight parity). Manual runs always produce a report.'
+    });
+  }
+
+  for (const [label, name] of usedSecretNames(state)) {
+    if (!VALID_SECRET_NAME.test(name)) {
+      warnings.push({
+        level: 'error',
+        message: `${label} "${name}" is not a valid GitHub secret/variable name (letters, digits, underscores; cannot start with a digit).`
+      });
+    } else if (name.toUpperCase().startsWith('GITHUB_')) {
+      warnings.push({ level: 'error', message: `${label} "${name}": the GITHUB_ prefix is reserved by GitHub.` });
+    }
+  }
+
+  if (state.timezone !== 'UTC') {
+    warnings.push({
+      level: 'info',
+      message: `Cron fires in UTC; with report timezone ${state.timezone} pick an hour that lands on the intended local day.`
     });
   }
 

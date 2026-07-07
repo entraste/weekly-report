@@ -94,8 +94,9 @@ export function searchQualifiers(org: string, startIso: string, endIso: string) 
   return {
     prsOpened: `org:${org} is:pr created:${range}`,
     prsMerged: `org:${org} is:pr is:merged merged:${range}`,
+    prsClosedUnmerged: `org:${org} is:pr is:closed is:unmerged closed:${range}`,
     issuesOpened: `org:${org} is:issue created:${range}`,
     issuesClosed: `org:${org} is:issue closed:${range}`,
-    openPrs: `org:${org} is:pr is:open sort:created-asc`
+    openPrs: `org:${org} is:pr is:open archived:false sort:created-asc`
   };
 }

@@ -62864,14 +62864,14 @@ var INPUT_DEFS = [
   },
   {
     key: "start-date",
-    description: "ISO date (YYYY-MM-DD), required when period=custom. Interpreted in `timezone`.",
+    description: "ISO date (YYYY-MM-DD), interpreted in `timezone`. Providing BOTH start-date and end-date switches the window to that custom range (period becomes custom).",
     required: false,
     secret: false,
     group: "period"
   },
   {
     key: "end-date",
-    description: "ISO date (YYYY-MM-DD), required when period=custom. Inclusive.",
+    description: "ISO date (YYYY-MM-DD), inclusive. See start-date.",
     required: false,
     secret: false,
     group: "period"
@@ -67141,12 +67141,13 @@ var DEFAULT_MODELS = {
 };
 
 // src/config/file-config.ts
+var SECRET_STRIP_EXEMPT = /* @__PURE__ */ new Set(["max-input-tokens", "max-output-tokens", "titles-per-repo"]);
 function stripSecretKeys(value, path4, warnings) {
   if (Array.isArray(value)) return value.map((v, i) => stripSecretKeys(v, `${path4}[${i}]`, warnings));
   if (typeof value !== "object" || value === null) return value;
   const out = {};
   for (const [key, v] of Object.entries(value)) {
-    if (SECRET_KEY_PATTERN.test(key)) {
+    if (!SECRET_STRIP_EXEMPT.has(key.toLowerCase()) && SECRET_KEY_PATTERN.test(key)) {
       warnings.push(`Config file: ignored key "${path4 ? `${path4}.` : ""}${key}" \u2014 secrets must be passed as action inputs, never in the config file.`);
       continue;
     }
@@ -67271,6 +67272,12 @@ function zonedMidnightUtcMs(year, month, day, timeZone) {
   let utc = naive - zoneOffsetMs(naive, timeZone);
   const refined = naive - zoneOffsetMs(utc, timeZone);
   if (refined !== utc) utc = refined;
+  for (let i = 0; i < 4; i += 1) {
+    const local = localParts(utc, timeZone);
+    if (local.year === year && local.month === month && local.day === day) break;
+    if (Date.UTC(local.year, local.month - 1, local.day) < naive) utc += 36e5;
+    else break;
+  }
   return utc;
 }
 function addDaysYmd(ymd, days) {
@@ -67291,13 +67298,6 @@ function parseYmd(s) {
     throw new ActionError("E_CUSTOM_DATES", `"${s}" is not a real calendar date.`);
   }
   return ymd;
-}
-function isoWeek(year, month, day) {
-  const date = new Date(Date.UTC(year, month - 1, day));
-  const dow = date.getUTCDay() === 0 ? 7 : date.getUTCDay();
-  date.setUTCDate(date.getUTCDate() + 4 - dow);
-  const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
-  return Math.ceil(((date.getTime() - yearStart) / 864e5 + 1) / 7);
 }
 function computeWindow(opts) {
   const { period, timezone, nowMs } = opts;
@@ -67350,11 +67350,17 @@ function computeWindow(opts) {
     timezone
   };
 }
+function weekIndex(year, month, day, dow) {
+  const monday = addDaysYmd({ year, month, day }, -(dow - 1));
+  const daysSinceEpoch = Math.round(Date.UTC(monday.year, monday.month - 1, monday.day) / 864e5);
+  return Math.floor((daysSinceEpoch - 4) / 7);
+}
 function biweeklyShouldRun(opts) {
   if (opts.isManualDispatch) return true;
   const today = localParts(opts.nowMs, opts.timezone);
-  const week = isoWeek(today.year, today.month, today.day);
-  return opts.anchor === "even" ? week % 2 === 0 : week % 2 === 1;
+  const index = weekIndex(today.year, today.month, today.day, today.dow);
+  const parity = (index % 2 + 2) % 2;
+  return opts.anchor === "even" ? parity === 0 : parity === 1;
 }
 function toSearchTimestamp(utcMs) {
   return new Date(utcMs).toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -67448,7 +67454,7 @@ function resolveConfig(opts) {
     LANGUAGES,
     "language"
   );
-  const period = parseEnum(
+  let period = parseEnum(
     pick(explicit["period"] ? values["period"] : void 0, file.period, d.period),
     PERIODS,
     "period"
@@ -67457,6 +67463,7 @@ function resolveConfig(opts) {
   assertValidTimezone(timezone);
   const startDate = values["start-date"] || file["start-date"] || void 0;
   const endDate = values["end-date"] || file["end-date"] || void 0;
+  if (startDate && endDate) period = "custom";
   if (period === "custom" && (!startDate || !endDate)) {
     throw new ActionError("E_CUSTOM_DATES", "period=custom requires both start-date and end-date.", [
       "Wire them to workflow_dispatch inputs for on-demand reports."
@@ -69140,9 +69147,10 @@ function searchQualifiers(org, startIso, endIso) {
   return {
     prsOpened: `org:${org} is:pr created:${range2}`,
     prsMerged: `org:${org} is:pr is:merged merged:${range2}`,
+    prsClosedUnmerged: `org:${org} is:pr is:closed is:unmerged closed:${range2}`,
     issuesOpened: `org:${org} is:issue created:${range2}`,
     issuesClosed: `org:${org} is:issue closed:${range2}`,
-    openPrs: `org:${org} is:pr is:open sort:created-asc`
+    openPrs: `org:${org} is:pr is:open archived:false sort:created-asc`
   };
 }
 
@@ -69202,7 +69210,7 @@ async function searchAll(client2, query, qualifier, opts) {
         "E_SEARCH_CAP",
         `Search "${opts.label}" matched ${totalCount} items \u2014 beyond GitHub's 1000-result cap.`,
         [
-          "Narrow the window (shorter period) or exclude high-churn repos with repos-exclude.",
+          "Use a shorter period (the search is org-wide; repos-include/exclude filter results AFTER the search, so they do not reduce this count).",
           "Automatic date-partitioning for large orgs is on the roadmap."
         ]
       );
@@ -69275,7 +69283,7 @@ async function collectRepoStats(client2, org, repoNames, window2, warnings) {
     try {
       result = await client2.graphql(query, {
         since: new Date(window2.startUtcMs).toISOString(),
-        until: new Date(window2.endUtcMs).toISOString()
+        until: new Date(window2.endUtcMs - 1e3).toISOString()
       });
     } catch (error2) {
       const partial = error2.data;
@@ -69298,16 +69306,32 @@ async function collect(client2, config, window2) {
   const startIso = toSearchTimestamp(window2.startUtcMs);
   const endIso = toSearchTimestamp(window2.endUtcMs - 1e3);
   const q = searchQualifiers(config.org, startIso, endIso);
-  const [prsOpenedRes, prsMergedRes, issuesOpenedRes, issuesClosedRes, openPrsRes] = [
-    await searchAll(client2, SEARCH_PRS_QUERY, q.prsOpened, { label: "PRs opened", warnings }),
-    await searchAll(client2, SEARCH_PRS_QUERY, q.prsMerged, { label: "PRs merged", warnings }),
+  const windowCap = Math.min(config.limits.maxPrs, SEARCH_RESULT_CAP);
+  const [prsOpenedRes, prsMergedRes, prsClosedRes, issuesOpenedRes, issuesClosedRes, openPrsRes] = [
+    await searchAll(client2, SEARCH_PRS_QUERY, q.prsOpened, {
+      label: "PRs opened",
+      warnings,
+      fetchCap: windowCap
+    }),
+    await searchAll(client2, SEARCH_PRS_QUERY, q.prsMerged, {
+      label: "PRs merged",
+      warnings,
+      fetchCap: windowCap
+    }),
+    await searchAll(client2, SEARCH_PRS_QUERY, q.prsClosedUnmerged, {
+      label: "PRs closed without merge",
+      warnings,
+      fetchCap: windowCap
+    }),
     await searchAll(client2, SEARCH_ISSUES_QUERY, q.issuesOpened, {
       label: "Issues opened",
-      warnings
+      warnings,
+      fetchCap: windowCap
     }),
     await searchAll(client2, SEARCH_ISSUES_QUERY, q.issuesClosed, {
       label: "Issues closed",
-      warnings
+      warnings,
+      fetchCap: windowCap
     }),
     await searchAll(client2, SEARCH_PRS_QUERY, q.openPrs, {
       label: "Open PRs",
@@ -69323,14 +69347,16 @@ async function collect(client2, config, window2) {
     window2,
     warnings
   );
+  const openPrTotalCount = Object.values(openPrCountByRepo).reduce((a, b) => a + b, 0);
   return {
     org: config.org,
     window: window2,
     repos,
     prsOpened: inScope(prsOpenedRes.nodes.map(toPrLite)),
     prsMerged: inScope(prsMergedRes.nodes.map(toPrLite)),
+    prsClosedUnmerged: inScope(prsClosedRes.nodes.map(toPrLite)),
     openPrs: inScope(openPrsRes.nodes.map(toPrLite)),
-    openPrTotalCount: openPrsRes.totalCount,
+    openPrTotalCount,
     issuesOpened: inScope(issuesOpenedRes.nodes.map(toIssueLite)),
     issuesClosed: inScope(issuesClosedRes.nodes.map(toIssueLite)),
     commitsByRepo,
@@ -69427,10 +69453,10 @@ function createAnthropicAdapter(apiKey, fetchImpl = fetch) {
         throw new LlmError("Anthropic refused the request (stop_reason=refusal).");
       }
       const text = data.content.filter((block) => block.type === "text" && typeof block.text === "string").map((block) => block.text).join("");
-      if (!text) throw new LlmError("Anthropic returned an empty response.");
       if (data.stop_reason === "max_tokens") {
-        throw new LlmError("Anthropic response truncated (max_tokens) \u2014 narrative JSON incomplete.");
+        throw new LlmError("Anthropic response truncated (max_tokens) \u2014 raise llm.max-output-tokens.");
       }
+      if (!text) throw new LlmError("Anthropic returned an empty response.");
       return {
         text,
         inputTokens: data.usage.input_tokens,
@@ -69519,7 +69545,7 @@ function estimateTokens(text) {
   return Math.ceil(text.length / 4);
 }
 function sanitizeTitle(title) {
-  const cleaned = title.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/g, " ").replace(/\s+/g, " ").trim();
+  const cleaned = title.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/g, " ").replace(/[<>]/g, " ").replace(/\s+/g, " ").trim();
   return cleaned.length > TITLE_MAX_CHARS ? `${cleaned.slice(0, TITLE_MAX_CHARS)}\u2026` : cleaned;
 }
 var TONE_GUIDE = {
@@ -69640,6 +69666,9 @@ function buildUserPrompt(data, metrics, highlights, config) {
 }
 
 // src/llm/narrative.ts
+function sleep(ms) {
+  return new Promise((resolve2) => setTimeout(resolve2, ms));
+}
 var PRICING = {
   "claude-sonnet-5": [3, 15],
   "claude-sonnet-4-6": [3, 15],
@@ -69700,7 +69729,10 @@ function tripwire(narrative, knownLogins, knownRepos) {
     narrative.teamNote,
     ...narrative.repoNotes.map((n2) => `${n2.repo} ${n2.note}`)
   ].join("\n");
-  if (/https?:\/\//i.test(allText)) return "narrative contains a URL";
+  if (/https?:\/\/|\bwww\.[a-z0-9-]+/i.test(allText)) return "narrative contains a URL";
+  if (/\b[a-z0-9][a-z0-9-]*\.(?:com|net|org|io|dev|app|co|xyz|info|ru|cn)(?:\/\S*)?\b/i.test(allText)) {
+    return "narrative contains a link-like domain";
+  }
   const mentions = allText.match(/@([A-Za-z0-9-]+)/g) ?? [];
   for (const mention of mentions) {
     const login = mention.slice(1).toLowerCase();
@@ -69762,7 +69794,10 @@ async function generateNarrative(opts) {
     } catch (error2) {
       const message = error2 instanceof Error ? error2.message : String(error2);
       notes.push(`Attempt ${attempt}: ${message}`);
-      if (message.includes("401")) break;
+      if (error2 instanceof LlmError) {
+        if (error2.status !== void 0 && !error2.retryable) break;
+        if (error2.retryable && attempt < 2) await sleep(2e3);
+      }
     }
   }
   const llmUsage = totalInput + totalOutput > 0 ? {
@@ -69790,10 +69825,11 @@ function dedupePrs(...sets) {
 }
 function reviewsInWindow(data) {
   const seen = /* @__PURE__ */ new Map();
-  const allPrs = dedupePrs(data.prsOpened, data.prsMerged, data.openPrs);
+  const allPrs = dedupePrs(data.prsOpened, data.prsMerged, data.prsClosedUnmerged, data.openPrs);
   for (const pr of allPrs) {
     for (const review of pr.reviews) {
       if (!review.submittedAt) continue;
+      if (review.author === pr.author) continue;
       const ts = Date.parse(review.submittedAt);
       if (ts < data.window.startUtcMs || ts >= data.window.endUtcMs) continue;
       const key = `${pr.repo}#${pr.number}@${review.author}@${review.submittedAt}`;
@@ -69968,12 +70004,17 @@ function computeHighlights(data, metrics, config, nowMs) {
     let best = null;
     for (const pr of dedupePrs(data.prsOpened, data.prsMerged)) {
       const created = Date.parse(pr.createdAt);
+      let first = null;
       for (const review of pr.reviews) {
         if (!review.submittedAt || isBot(review.author, config) || review.author === pr.author) continue;
-        const minutes = (Date.parse(review.submittedAt) - created) / 6e4;
-        if (minutes < minMinutes) continue;
-        if (!best || minutes < best.minutes) best = { pr, reviewer: review.author, minutes };
+        const ts = Date.parse(review.submittedAt);
+        if (!first || ts < first.ts) first = { author: review.author, ts };
       }
+      if (!first) continue;
+      if (first.ts < data.window.startUtcMs || first.ts >= data.window.endUtcMs) continue;
+      const minutes = (first.ts - created) / 6e4;
+      if (minutes < minMinutes) continue;
+      if (!best || minutes < best.minutes) best = { pr, reviewer: first.author, minutes };
     }
     if (best) {
       results.push({
@@ -70034,6 +70075,7 @@ var STRINGS = {
     "table.issues": "Issues (opened/closed)",
     "table.issuesOpened": "Issues opened",
     "table.commits": "Commits",
+    "table.openPrsNow": "Open now",
     "table.linesChanged": "\u0394 lines",
     "table.reviews": "Reviews",
     "table.merges": "Merges",
@@ -70055,14 +70097,19 @@ var STRINGS = {
     "narrative.skipped-disabled": "_LLM narrative disabled (llm-provider: none)._",
     "narrative.failed": "_The LLM call failed; showing metrics only. See the run log for details._",
     // Appendix
-    "appendix.window": "Window: {startDate} \u2192 {endDate} ({timezone}), previous complete {period}.",
+    "appendix.window": "Window: {startDate} \u2192 {endDate} ({timezone}) \u2014 previous complete {period}.",
     "appendix.repos": "Repos scanned: {scanned} (after include/exclude filters).",
     "appendix.method": "Numbers are computed deterministically from the GitHub API (Search + GraphQL); the LLM writes narrative only and never computes figures. Review counts cover the first 50 reviews per PR. Person-level commit counts are not attributed in v1.",
     "appendix.llmUsage": "LLM: {provider} {model} \u2014 {inputTokens} in / {outputTokens} out tokens{cost}.",
     "appendix.llmCost": " (~${cost} estimated)",
     "appendix.warnings": "Collection warnings:",
     "appendix.generatedBy": "Generated by Org Weekly Report (AI).",
-    // Period labels
+    // Period words + labels
+    "periodWord.daily": "day",
+    "periodWord.weekly": "week",
+    "periodWord.biweekly": "fortnight",
+    "periodWord.monthly": "month",
+    "periodWord.custom": "custom range",
     "period.weekly": "Week of {start} \u2013 {end}",
     "period.biweekly": "Weeks of {start} \u2013 {end}",
     "period.monthly": "{month}",
@@ -70105,6 +70152,7 @@ var STRINGS = {
     "table.issues": "Issues (abiertos/cerrados)",
     "table.issuesOpened": "Issues abiertos",
     "table.commits": "Commits",
+    "table.openPrsNow": "Abiertos hoy",
     "table.linesChanged": "\u0394 l\xEDneas",
     "table.reviews": "Reviews",
     "table.merges": "Merges",
@@ -70123,13 +70171,18 @@ var STRINGS = {
     "narrative.skipped-dry-run": "_Dry run \u2014 se omiti\xF3 la narrativa del LLM._",
     "narrative.skipped-disabled": "_Narrativa LLM deshabilitada (llm-provider: none)._",
     "narrative.failed": "_Fall\xF3 la llamada al LLM; se muestran solo m\xE9tricas. Ver el log del run para m\xE1s detalle._",
-    "appendix.window": "Ventana: {startDate} \u2192 {endDate} ({timezone}), {period} completo anterior.",
+    "appendix.window": "Ventana: {startDate} \u2192 {endDate} ({timezone}) \u2014 per\xEDodo completo anterior: {period}.",
     "appendix.repos": "Repos analizados: {scanned} (despu\xE9s de filtros include/exclude).",
     "appendix.method": "Los n\xFAmeros se calculan de forma determin\xEDstica desde la API de GitHub (Search + GraphQL); el LLM solo escribe narrativa y nunca calcula cifras. Los conteos de reviews cubren las primeras 50 por PR. Los commits por persona no se atribuyen en v1.",
     "appendix.llmUsage": "LLM: {provider} {model} \u2014 {inputTokens} tokens de entrada / {outputTokens} de salida{cost}.",
     "appendix.llmCost": " (~${cost} estimado)",
     "appendix.warnings": "Advertencias de recolecci\xF3n:",
     "appendix.generatedBy": "Generado por Org Weekly Report (AI).",
+    "periodWord.daily": "d\xEDa",
+    "periodWord.weekly": "semana",
+    "periodWord.biweekly": "quincena",
+    "periodWord.monthly": "mes",
+    "periodWord.custom": "rango personalizado",
     "period.weekly": "Semana del {start} al {end}",
     "period.biweekly": "Semanas del {start} al {end}",
     "period.monthly": "{month}",
@@ -70146,11 +70199,11 @@ var STRINGS = {
   }
 };
 function t(lang, key, vars = {}) {
-  let template = STRINGS[lang][key] ?? STRINGS.en[key];
-  for (const [name, value] of Object.entries(vars)) {
-    template = template.replaceAll(`{${name}}`, String(value));
-  }
-  return template;
+  const template = STRINGS[lang][key] ?? STRINGS.en[key];
+  return template.replace(
+    /\{([\w-]+)\}/g,
+    (match, name) => name in vars ? String(vars[name]) : match
+  );
 }
 var LOCALE = { en: "en-US", es: "es-ES" };
 function shortDate(ymd, lang) {
@@ -70222,6 +70275,7 @@ function buildReport(opts) {
     llmUsage: opts.llmUsage,
     warnings: data.warnings,
     runUrl: opts.runUrl,
+    slackReportUrl: config.slack.reportUrl || opts.runUrl,
     slackTopHighlights: config.slack.topHighlights
   };
 }
@@ -70230,11 +70284,18 @@ function buildReport(opts) {
 function n(value) {
   return value.toLocaleString("en-US");
 }
+function mdEscapeInline(text) {
+  return text.replace(/[\r\n]+/g, " ").replace(/([\\`*_[\]<>|])/g, "\\$1");
+}
+function hasTrackedActivity(report) {
+  const m = report.orgMetrics;
+  return m.prsOpened + m.prsMerged + m.commits + m.issuesOpened + m.issuesClosed + m.reviewsSubmitted > 0;
+}
 function renderHighlight(h, report) {
   const lang = report.language;
   switch (h.id) {
     case "oldest-open-pr":
-      return t(lang, "highlight.oldest-open-pr", { ...h.pr, ageDays: h.ageDays });
+      return t(lang, "highlight.oldest-open-pr", { ...h.pr, title: mdEscapeInline(h.pr.title), ageDays: h.ageDays });
     case "top-merger":
     case "top-reviewer":
       return t(lang, `highlight.${h.id}`, {
@@ -70245,14 +70306,15 @@ function renderHighlight(h, report) {
         totalStale: h.totalStale,
         thresholdDays: h.thresholdDays
       });
-      const items = h.items.map((item) => `  - ${t(lang, "highlight.stale-prs.item", { ...item })}`);
+      const items = h.items.map((item) => `  - ${t(lang, "highlight.stale-prs.item", { ...item, title: mdEscapeInline(item.title) })}`);
       return [header, ...items].join("\n");
     }
     case "biggest-pr":
-      return t(lang, "highlight.biggest-pr", { ...h.pr, additions: n(h.additions), deletions: n(h.deletions) });
+      return t(lang, "highlight.biggest-pr", { ...h.pr, title: mdEscapeInline(h.pr.title), additions: n(h.additions), deletions: n(h.deletions) });
     case "fastest-review":
       return t(lang, "highlight.fastest-review", {
         ...h.pr,
+        title: mdEscapeInline(h.pr.title),
         reviewer: h.reviewer,
         duration: humanDuration(h.minutes / 60, lang)
       });
@@ -70299,7 +70361,7 @@ function renderMarkdown(report) {
   lines.push("");
   lines.push(`## ${t(lang, "section.keyNumbers")}`);
   lines.push("");
-  if (report.orgMetrics.prsOpened + report.orgMetrics.prsMerged + report.orgMetrics.commits === 0) {
+  if (!hasTrackedActivity(report)) {
     lines.push(t(lang, "report.noActivity"));
   } else {
     lines.push("| | |");
@@ -70317,7 +70379,7 @@ function renderMarkdown(report) {
     lines.push(`## ${t(lang, "section.repoActivity")}`);
     lines.push("");
     lines.push(
-      `| ${t(lang, "table.repo")} | ${t(lang, "table.prsMerged")} | ${t(lang, "table.prsOpened")} | ${t(lang, "table.openPrs")} | ${t(lang, "table.issues")} | ${t(lang, "table.commits")} | ${t(lang, "table.linesChanged")} |`
+      `| ${t(lang, "table.repo")} | ${t(lang, "table.prsMerged")} | ${t(lang, "table.prsOpened")} | ${t(lang, "table.openPrsNow")} | ${t(lang, "table.issues")} | ${t(lang, "table.commits")} | ${t(lang, "table.linesChanged")} |`
     );
     lines.push("|---|---:|---:|---:|---:|---:|---:|");
     const notes = new Map(report.narrative?.repoNotes.map((r) => [r.repo, r.note]) ?? []);
@@ -70326,7 +70388,7 @@ function renderMarkdown(report) {
         `| **${m.repo}** | ${n(m.prsMerged)} | ${n(m.prsOpened)} | ${n(m.openPrs)} | ${n(m.issuesOpened)}/${n(m.issuesClosed)} | ${n(m.commits)} | +${n(m.additions)}/\u2212${n(m.deletions)} |`
       );
       const note = notes.get(m.repo);
-      if (note) lines.push(`| \u21B3 _${note.trim()}_ |||||||`);
+      if (note) lines.push(`| \u21B3 _${mdEscapeInline(note.trim())}_ |||||||`);
     }
     if (report.repoLongTail) {
       lines.push("");
@@ -70365,7 +70427,7 @@ function renderMarkdown(report) {
       startDate: report.window.startDate,
       endDate: report.window.endDate,
       timezone: report.window.timezone,
-      period: report.window.period
+      period: t(lang, `periodWord.${report.window.period}`)
     })}`
   );
   lines.push(`- ${t(lang, "appendix.repos", { scanned: report.orgMetrics.totalReposScanned })}`);
@@ -70397,7 +70459,13 @@ function escapeHtml(s) {
   return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 function mdInlineToHtml(md) {
-  return escapeHtml(md).replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" style="color:#0969da;text-decoration:none;">$1</a>').replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/_([^_]+)_/g, "<em>$1</em>");
+  return escapeHtml(md).replace(
+    /\[([^\]]+)\]\(([^)\s]+)\)/g,
+    (match, text, url2) => (
+      // Only http(s) targets become anchors — javascript:/data: render as text.
+      /^https?:\/\//i.test(url2) ? `<a href="${url2}" style="color:#0969da;text-decoration:none;">${text}</a>` : match
+    )
+  ).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[\s(>])_([^_\n]+)_(?=$|[\s).,;:!?<])/g, "$1<em>$2</em>");
 }
 var CELL = "padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:14px;";
 var HEAD_CELL = `${CELL}font-weight:600;background:#f6f8fa;text-align:left;`;
@@ -70424,7 +70492,7 @@ function renderEmailHtml(report) {
   const summary2 = report.narrative ? escapeHtml(report.narrative.executiveSummary) : mdInlineToHtml(t(lang, `narrative.${report.narrativeStatus}`));
   parts.push(`<p style="font-size:15px;line-height:1.5;color:#1f2328;">${summary2}</p>`);
   parts.push(sectionTitle(t(lang, "section.keyNumbers")));
-  if (report.orgMetrics.prsOpened + report.orgMetrics.prsMerged + report.orgMetrics.commits === 0) {
+  if (!hasTrackedActivity(report)) {
     parts.push(`<p style="font-size:14px;color:#57606a;">${escapeHtml(t(lang, "report.noActivity"))}</p>`);
   } else {
     parts.push(table([" ", " "], keyNumberRows(report).map(([label, value]) => [escapeHtml(label), escapeHtml(value)])));
@@ -70456,7 +70524,7 @@ function renderEmailHtml(report) {
           t(lang, "table.repo"),
           t(lang, "table.prsMerged"),
           t(lang, "table.prsOpened"),
-          t(lang, "table.openPrs"),
+          t(lang, "table.openPrsNow"),
           t(lang, "table.issues"),
           t(lang, "table.commits")
         ],
@@ -70504,7 +70572,7 @@ function renderEmailHtml(report) {
       startDate: report.window.startDate,
       endDate: report.window.endDate,
       timezone: report.window.timezone,
-      period: report.window.period
+      period: t(lang, `periodWord.${report.window.period}`)
     }),
     t(lang, "appendix.repos", { scanned: report.orgMetrics.totalReposScanned })
   ];
@@ -70525,8 +70593,11 @@ function renderEmailHtml(report) {
 // src/render/slack.ts
 var SUMMARY_CHAR_LIMIT = 1800;
 var MAX_FIELDS = 10;
+function escapeMrkdwn(text) {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
 function mdToMrkdwn(md) {
-  return md.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "<$2|$1>").replace(/\*\*([^*]+)\*\*/g, "*$1*");
+  return escapeMrkdwn(md).replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "<$2|$1>").replace(/\*\*([^*]+)\*\*/g, "*$1*");
 }
 function buildSlackPayload(report) {
   const lang = report.language;
@@ -70534,50 +70605,62 @@ function buildSlackPayload(report) {
   const blocks2 = [];
   blocks2.push({
     type: "header",
-    text: { type: "plain_text", text: headline.slice(0, 150), emoji: true }
+    text: { type: "plain_text", text: truncate3(headline, 150), emoji: true }
   });
   blocks2.push({
     type: "context",
     elements: [
       {
         type: "mrkdwn",
-        text: `${report.window.startDate} \u2192 ${report.window.endDate} (${report.window.timezone})`
+        text: `${report.window.startDate} \u2192 ${report.window.endDate} (${escapeMrkdwn(report.window.timezone)})`
       }
     ]
   });
   const summaryText = report.narrative ? report.narrative.executiveSummary : t(lang, `narrative.${report.narrativeStatus}`).replaceAll("_", "");
   blocks2.push({
     type: "section",
-    text: { type: "mrkdwn", text: truncate3(summaryText, SUMMARY_CHAR_LIMIT) }
+    text: { type: "mrkdwn", text: truncate3(mdToMrkdwn(summaryText), SUMMARY_CHAR_LIMIT) }
   });
-  const rows = keyNumberRows(report).slice(0, MAX_FIELDS);
-  if (rows.length > 0) {
+  if (!hasTrackedActivity(report)) {
     blocks2.push({ type: "divider" });
     blocks2.push({
       type: "section",
-      fields: rows.map(([label, value]) => ({ type: "mrkdwn", text: `*${label}*
-${value}` }))
+      text: { type: "mrkdwn", text: t(lang, "slack.noActivity") }
     });
-  }
-  const top = report.highlights.slice(0, report.slackTopHighlights ?? 3);
-  if (top.length > 0) {
-    blocks2.push({ type: "divider" });
-    blocks2.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: top.map((h) => `\u2022 ${truncate3(mdToMrkdwn(renderHighlight(h, report).split("\n")[0]), 500)}`).join("\n")
-      }
-    });
+  } else {
+    const rows = keyNumberRows(report).slice(0, MAX_FIELDS);
+    if (rows.length > 0) {
+      blocks2.push({ type: "divider" });
+      blocks2.push({
+        type: "section",
+        fields: rows.map(([label, value]) => ({
+          type: "mrkdwn",
+          text: `*${escapeMrkdwn(label)}*
+${escapeMrkdwn(value)}`
+        }))
+      });
+    }
+    const top = report.highlights.slice(0, report.slackTopHighlights);
+    if (top.length > 0) {
+      blocks2.push({ type: "divider" });
+      blocks2.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: top.map((h) => `\u2022 ${truncate3(mdToMrkdwn(renderHighlight(h, report).split("\n")[0]), 500)}`).join("\n")
+        }
+      });
+    }
   }
   blocks2.push({
     type: "context",
-    elements: [{ type: "mrkdwn", text: `<${report.runUrl}|${t(lang, "slack.viewFull")}>` }]
+    elements: [{ type: "mrkdwn", text: `<${report.slackReportUrl}|${t(lang, "slack.viewFull")}>` }]
   });
   return { text: headline, blocks: blocks2 };
 }
 function truncate3(s, max) {
-  return s.length > max ? `${s.slice(0, max - 1)}\u2026` : s;
+  const chars = [...s];
+  return chars.length > max ? `${chars.slice(0, max - 1).join("")}\u2026` : s;
 }
 
 // src/deliver/resend.ts
@@ -70593,7 +70676,7 @@ async function deliverEmail(apiKey, message, fetchImpl = fetch) {
     try {
       let response = await send(apiKey, { ...message, to: batch }, fetchImpl);
       if (response.status === 429 || response.status >= 500) {
-        await sleep(2e3);
+        await sleep2(2e3);
         response = await send(apiKey, { ...message, to: batch }, fetchImpl);
       }
       if (!response.ok) {
@@ -70608,7 +70691,7 @@ async function deliverEmail(apiKey, message, fetchImpl = fetch) {
     return { ok: true, detail: `ok (${message.to.length} recipient${message.to.length === 1 ? "" : "s"})` };
   }
   return {
-    ok: failures.length < batches.length,
+    ok: false,
     detail: `Resend: ${batches.length - failures.length}/${batches.length} batches sent; errors: ${failures.join(" | ")}`
   };
 }
@@ -70629,7 +70712,7 @@ async function send(apiKey, message, fetchImpl) {
     })
   });
 }
-function sleep(ms) {
+function sleep2(ms) {
   return new Promise((resolve2) => setTimeout(resolve2, ms));
 }
 
@@ -70645,8 +70728,9 @@ async function deliverToSlack(webhookUrl, payload, fetchImpl = fetch) {
   try {
     let response = await post(webhookUrl, payload, fetchImpl);
     if (response.status === 429 || response.status >= 500) {
-      const retryAfter = Number(response.headers.get("retry-after") ?? 2);
-      await sleep2(Math.min(retryAfter, 10) * 1e3);
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const waitSeconds = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 10) : 2;
+      await sleep3(waitSeconds * 1e3);
       response = await post(webhookUrl, payload, fetchImpl);
     }
     if (response.ok) return { ok: true, detail: "ok" };
@@ -70660,7 +70744,7 @@ async function deliverToSlack(webhookUrl, payload, fetchImpl = fetch) {
     return { ok: false, detail: `Slack delivery error: ${error2 instanceof Error ? error2.message : String(error2)}` };
   }
 }
-function sleep2(ms) {
+function sleep3(ms) {
   return new Promise((resolve2) => setTimeout(resolve2, ms));
 }
 
@@ -113110,9 +113194,9 @@ async function run() {
   info(`Reporting on org "${config.org}" \u2014 period=${config.period}, timezone=${config.timezone}, language=${config.language}${config.dryRun ? " (dry run)" : ""}`);
   const isManualDispatch = process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
   if (config.period === "biweekly" && !biweeklyShouldRun({ nowMs, timezone: config.timezone, anchor: config.biweeklyAnchor, isManualDispatch })) {
-    const notice2 = `Biweekly parity: this ISO week does not match biweekly-anchor=${config.biweeklyAnchor}; skipping (next scheduled week will run).`;
+    const notice2 = `Biweekly parity: this week does not match biweekly-anchor=${config.biweeklyAnchor}; skipping (next scheduled week will run).`;
     notice(notice2);
-    await summary.addRaw(`> ${notice2}`).write();
+    await writeJobSummary(`> ${notice2}`);
     return;
   }
   const window2 = computeWindow({
@@ -113132,10 +113216,11 @@ async function run() {
   let narrative = null;
   let narrativeStatus;
   let llmUsage = null;
+  const explicitNone = getInput("llm-provider") === "none" || fileResult.config?.llm?.provider === "none";
   if (config.dryRun) {
     narrativeStatus = "skipped-dry-run";
   } else if (config.llm.provider === "none") {
-    narrativeStatus = config.llm.anthropicApiKey || config.llm.openaiApiKey ? "skipped-disabled" : "skipped-no-key";
+    narrativeStatus = explicitNone ? "skipped-disabled" : "skipped-no-key";
     if (narrativeStatus === "skipped-no-key") {
       warning("No LLM API key configured \u2014 generating a metrics-only report. Add anthropic-api-key or openai-api-key for a narrative.");
     }
@@ -113167,7 +113252,7 @@ async function run() {
     deliveryStatus.summary = summary2.ok ? "ok" : "failed";
     if (!summary2.ok) warning(summary2.detail);
   }
-  if (config.output.artifact && !config.dryRun) {
+  if (config.output.artifact) {
     const artifact = await uploadReportArtifact(config.output.artifactName, files);
     deliveryStatus.artifact = artifact.ok ? "ok" : "failed";
     if (!artifact.ok) warning(artifact.detail);

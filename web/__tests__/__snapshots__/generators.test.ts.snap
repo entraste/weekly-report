@@ -24,6 +24,7 @@ jobs:
           github-token: \${{ secrets.ORG_REPORT_GITHUB_TOKEN }}
           org: acme
           anthropic-api-key: \${{ secrets.ANTHROPIC_API_KEY }}
+          llm-provider: anthropic
           language: es
           period: biweekly
           timezone: America/Montevideo

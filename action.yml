@@ -45,9 +45,10 @@ inputs:
       COMPLETE calendar period in `timezone` — never inferred from the cron.
     default: weekly
   start-date:
-    description: ISO date (YYYY-MM-DD), required when period=custom. Interpreted in `timezone`.
+    description: ISO date (YYYY-MM-DD), interpreted in `timezone`. Providing BOTH start-date and
+      end-date switches the window to that custom range (period becomes custom).
   end-date:
-    description: ISO date (YYYY-MM-DD), required when period=custom. Inclusive.
+    description: ISO date (YYYY-MM-DD), inclusive. See start-date.
   timezone:
     description: IANA timezone for window boundaries and displayed dates.
     default: UTC
@@ -87,7 +88,7 @@ outputs:
     description: JSON per channel, e.g. {"slack":"ok","email":"failed","summary":"ok","artifact":"ok"}
   llm-usage:
     description: 'JSON:
-      {"provider":"anthropic","model":"claude-sonnet-4-5","inputTokens":6200,"outputTokens":1400,"estimatedCostUsd":0.04}'
+      {"provider":"anthropic","model":"claude-sonnet-5","inputTokens":6200,"outputTokens":1400,"estimatedCostUsd":0.04}'
 runs:
   using: node24
   main: dist/index.js

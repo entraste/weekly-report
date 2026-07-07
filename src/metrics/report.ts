@@ -59,6 +59,7 @@ export function buildReport(opts: BuildReportOptions): Report {
     llmUsage: opts.llmUsage,
     warnings: data.warnings,
     runUrl: opts.runUrl,
+    slackReportUrl: config.slack.reportUrl || opts.runUrl,
     slackTopHighlights: config.slack.topHighlights
   };
 }

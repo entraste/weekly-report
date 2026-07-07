@@ -157,7 +157,7 @@ export function resolveConfig(opts: ResolveOptions): ResolvedConfig {
     'language'
   );
 
-  const period = parseEnum<Period>(
+  let period = parseEnum<Period>(
     pick(explicit['period'] ? values['period'] : undefined, file.period, d.period),
     PERIODS,
     'period'
@@ -168,6 +168,10 @@ export function resolveConfig(opts: ResolveOptions): ResolvedConfig {
 
   const startDate = values['start-date'] || file['start-date'] || undefined;
   const endDate = values['end-date'] || file['end-date'] || undefined;
+  // Explicit dates win: supplying BOTH switches the window to that custom
+  // range — this is what makes workflow_dispatch date inputs work without
+  // also having to flip `period`.
+  if (startDate && endDate) period = 'custom';
   if (period === 'custom' && (!startDate || !endDate)) {
     throw new ActionError('E_CUSTOM_DATES', 'period=custom requires both start-date and end-date.', [
       'Wire them to workflow_dispatch inputs for on-demand reports.'

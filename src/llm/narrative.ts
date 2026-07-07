@@ -11,10 +11,18 @@ import type { ResolvedConfig } from '../schema/index.js';
 import { createAnthropicAdapter } from './anthropic.js';
 import { createOpenAiAdapter } from './openai.js';
 import { buildSystemPrompt, buildUserPrompt } from './prompt.js';
-import { NARRATIVE_SCHEMA } from './types.js';
+import { LlmError, NARRATIVE_SCHEMA } from './types.js';
 import type { LlmAdapter, NarrativeOutcome } from './types.js';
 
-/** USD per 1M tokens [input, output] — estimates for the cost line only. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * USD per 1M tokens [input, output] — estimates for the cost line only.
+ * claude-sonnet-5 lists standard pricing (intro $2/$10 applies through
+ * 2026-08-31, so estimates may overstate until then).
+ */
 const PRICING: Record<string, [number, number]> = {
   'claude-sonnet-5': [3, 15],
   'claude-sonnet-4-6': [3, 15],
@@ -92,7 +100,12 @@ export function tripwire(narrative: Narrative, knownLogins: Set<string>, knownRe
     ...narrative.repoNotes.map((n) => `${n.repo} ${n.note}`)
   ].join('\n');
 
-  if (/https?:\/\//i.test(allText)) return 'narrative contains a URL';
+  // Protocol-less links (www.evil.com, evil.co/x) auto-linkify in Slack and
+  // most mail clients — treat them like URLs.
+  if (/https?:\/\/|\bwww\.[a-z0-9-]+/i.test(allText)) return 'narrative contains a URL';
+  if (/\b[a-z0-9][a-z0-9-]*\.(?:com|net|org|io|dev|app|co|xyz|info|ru|cn)(?:\/\S*)?\b/i.test(allText)) {
+    return 'narrative contains a link-like domain';
+  }
 
   const mentions = allText.match(/@([A-Za-z0-9-]+)/g) ?? [];
   for (const mention of mentions) {
@@ -171,8 +184,13 @@ export async function generateNarrative(opts: GenerateNarrativeOptions): Promise
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       notes.push(`Attempt ${attempt}: ${message}`);
-      // 401 will not fix itself on retry.
-      if (message.includes('401')) break;
+      if (error instanceof LlmError) {
+        // Client errors (bad key, bad model, invalid request) won't fix
+        // themselves on an identical retry.
+        if (error.status !== undefined && !error.retryable) break;
+        // Rate limits / 5xx: brief backoff before the second attempt.
+        if (error.retryable && attempt < 2) await sleep(2000);
+      }
     }
   }
 

@@ -32,6 +32,14 @@ describe('zonedMidnightUtcMs', () => {
     // Montevideo midnight = 03:00 UTC
     expect(zonedMidnightUtcMs(2026, 7, 6, 'America/Montevideo')).toBe(Date.UTC(2026, 6, 6, 3));
   });
+  it('rolls forward when midnight does not exist (Chile spring-forward)', () => {
+    // America/Santiago jumps 00:00 -> 01:00 on 2026-09-06; local midnight does
+    // not exist, so the window boundary is the first valid instant (04:00Z).
+    const ms = zonedMidnightUtcMs(2026, 9, 6, 'America/Santiago');
+    const local = localParts(ms, 'America/Santiago');
+    expect([local.year, local.month, local.day]).toEqual([2026, 9, 6]);
+  });
+
   it('handles DST-observing zones', () => {
     // Madrid in July is UTC+2 → local midnight = 22:00 UTC previous day
     expect(zonedMidnightUtcMs(2026, 7, 6, 'Europe/Madrid')).toBe(Date.UTC(2026, 6, 5, 22));
@@ -133,10 +141,20 @@ describe('isoWeek / biweekly parity', () => {
   });
 
   it('gates on parity but always runs manual dispatches', () => {
-    // 2026-07-06 is ISO week 28 (even)
+    // 2026-07-06 falls in an even fortnight-index week
     expect(biweeklyShouldRun({ nowMs: NOW, timezone: 'UTC', anchor: 'even', isManualDispatch: false })).toBe(true);
     expect(biweeklyShouldRun({ nowMs: NOW, timezone: 'UTC', anchor: 'odd', isManualDispatch: false })).toBe(false);
     expect(biweeklyShouldRun({ nowMs: NOW, timezone: 'UTC', anchor: 'odd', isManualDispatch: true })).toBe(true);
+  });
+
+  it('parity stays continuous across 53-week ISO years (no double/missed fortnight)', () => {
+    // ISO weeks 53 (2026-12-28) and 1 (2027-01-04) are BOTH odd — the old
+    // ISO-parity gate would run twice or skip; fortnight parity alternates.
+    const dec28 = Date.UTC(2026, 11, 28, 9);
+    const jan04 = Date.UTC(2027, 0, 4, 9);
+    const runsDec = biweeklyShouldRun({ nowMs: dec28, timezone: 'UTC', anchor: 'even', isManualDispatch: false });
+    const runsJan = biweeklyShouldRun({ nowMs: jan04, timezone: 'UTC', anchor: 'even', isManualDispatch: false });
+    expect(runsDec).not.toBe(runsJan);
   });
 });
 

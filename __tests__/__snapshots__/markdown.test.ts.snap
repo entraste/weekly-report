@@ -38,7 +38,7 @@ A strong week focused on the API: rate limiting landed and review flow stayed he
 
 ## Repository Activity
 
-| Repository | PRs merged | PRs opened | Open PRs | Issues (opened/closed) | Commits | Δ lines |
+| Repository | PRs merged | PRs opened | Open now | Issues (opened/closed) | Commits | Δ lines |
 |---|---:|---:|---:|---:|---:|---:|
 | **api** | 2 | 2 | 2 | 1/1 | 42 | +460/−150 |
 | ↳ _Rate limiter + N+1 fix merged; billing refactor still waiting._ |||||||
@@ -59,7 +59,7 @@ Bob carried reviews this week; dave landed his first contribution.
 
 ## Appendix — methodology & caveats
 
-- Window: 2026-06-29 → 2026-07-05 (UTC), previous complete weekly.
+- Window: 2026-06-29 → 2026-07-05 (UTC) — previous complete week.
 - Repos scanned: 3 (after include/exclude filters).
 - Numbers are computed deterministically from the GitHub API (Search + GraphQL); the LLM writes narrative only and never computes figures. Review counts cover the first 50 reviews per PR. Person-level commit counts are not attributed in v1.
 - LLM: anthropic claude-sonnet-4-5 — 6,200 in / 1,400 out tokens (~$0.040 estimated).
@@ -106,7 +106,7 @@ A strong week focused on the API: rate limiting landed and review flow stayed he
 
 ## Actividad por Repositorio
 
-| Repositorio | PRs mergeados | PRs abiertos | PRs abiertos | Issues (abiertos/cerrados) | Commits | Δ líneas |
+| Repositorio | PRs mergeados | PRs abiertos | Abiertos hoy | Issues (abiertos/cerrados) | Commits | Δ líneas |
 |---|---:|---:|---:|---:|---:|---:|
 | **api** | 2 | 2 | 2 | 1/1 | 42 | +460/−150 |
 | ↳ _Rate limiter + N+1 fix merged; billing refactor still waiting._ |||||||
@@ -127,7 +127,7 @@ Bob carried reviews this week; dave landed his first contribution.
 
 ## Apéndice — metodología y salvedades
 
-- Ventana: 2026-06-29 → 2026-07-05 (UTC), weekly completo anterior.
+- Ventana: 2026-06-29 → 2026-07-05 (UTC) — período completo anterior: semana.
 - Repos analizados: 3 (después de filtros include/exclude).
 - Los números se calculan de forma determinística desde la API de GitHub (Search + GraphQL); el LLM solo escribe narrativa y nunca calcula cifras. Los conteos de reviews cubren las primeras 50 por PR. Los commits por persona no se atribuyen en v1.
 - LLM: anthropic claude-sonnet-4-5 — 6,200 tokens de entrada / 1,400 de salida (~$0.040 estimado).

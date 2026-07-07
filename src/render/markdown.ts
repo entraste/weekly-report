@@ -9,11 +9,26 @@ function n(value: number): string {
   return value.toLocaleString('en-US');
 }
 
+/**
+ * Escape untrusted text for inline-markdown interpolation: neutralizes table
+ * pipes, link/emphasis metacharacters and newlines so a PR title can never
+ * inject links or break tables (defense-in-depth next to the LLM tripwires).
+ */
+export function mdEscapeInline(text: string): string {
+  return text.replace(/[\r\n]+/g, ' ').replace(/([\\`*_[\]<>|])/g, '\\$1');
+}
+
+/** Anything at all happened in this window? Shared by all renderers. */
+export function hasTrackedActivity(report: Report): boolean {
+  const m = report.orgMetrics;
+  return m.prsOpened + m.prsMerged + m.commits + m.issuesOpened + m.issuesClosed + m.reviewsSubmitted > 0;
+}
+
 export function renderHighlight(h: HighlightData, report: Report): string {
   const lang = report.language;
   switch (h.id) {
     case 'oldest-open-pr':
-      return t(lang, 'highlight.oldest-open-pr', { ...h.pr, ageDays: h.ageDays });
+      return t(lang, 'highlight.oldest-open-pr', { ...h.pr, title: mdEscapeInline(h.pr.title), ageDays: h.ageDays });
     case 'top-merger':
     case 'top-reviewer':
       return t(lang, `highlight.${h.id}`, {
@@ -24,14 +39,15 @@ export function renderHighlight(h: HighlightData, report: Report): string {
         totalStale: h.totalStale,
         thresholdDays: h.thresholdDays
       });
-      const items = h.items.map((item) => `  - ${t(lang, 'highlight.stale-prs.item', { ...item })}`);
+      const items = h.items.map((item) => `  - ${t(lang, 'highlight.stale-prs.item', { ...item, title: mdEscapeInline(item.title) })}`);
       return [header, ...items].join('\n');
     }
     case 'biggest-pr':
-      return t(lang, 'highlight.biggest-pr', { ...h.pr, additions: n(h.additions), deletions: n(h.deletions) });
+      return t(lang, 'highlight.biggest-pr', { ...h.pr, title: mdEscapeInline(h.pr.title), additions: n(h.additions), deletions: n(h.deletions) });
     case 'fastest-review':
       return t(lang, 'highlight.fastest-review', {
         ...h.pr,
+        title: mdEscapeInline(h.pr.title),
         reviewer: h.reviewer,
         duration: humanDuration(h.minutes / 60, lang)
       });
@@ -85,7 +101,7 @@ export function renderMarkdown(report: Report): string {
   // 2. Key numbers
   lines.push(`## ${t(lang, 'section.keyNumbers')}`);
   lines.push('');
-  if (report.orgMetrics.prsOpened + report.orgMetrics.prsMerged + report.orgMetrics.commits === 0) {
+  if (!hasTrackedActivity(report)) {
     lines.push(t(lang, 'report.noActivity'));
   } else {
     lines.push('| | |');
@@ -108,7 +124,7 @@ export function renderMarkdown(report: Report): string {
     lines.push('');
     lines.push(
       `| ${t(lang, 'table.repo')} | ${t(lang, 'table.prsMerged')} | ${t(lang, 'table.prsOpened')} | ` +
-        `${t(lang, 'table.openPrs')} | ${t(lang, 'table.issues')} | ${t(lang, 'table.commits')} | ${t(lang, 'table.linesChanged')} |`
+        `${t(lang, 'table.openPrsNow')} | ${t(lang, 'table.issues')} | ${t(lang, 'table.commits')} | ${t(lang, 'table.linesChanged')} |`
     );
     lines.push('|---|---:|---:|---:|---:|---:|---:|');
     const notes = new Map(report.narrative?.repoNotes.map((r) => [r.repo, r.note]) ?? []);
@@ -118,7 +134,7 @@ export function renderMarkdown(report: Report): string {
           `${n(m.issuesOpened)}/${n(m.issuesClosed)} | ${n(m.commits)} | +${n(m.additions)}/−${n(m.deletions)} |`
       );
       const note = notes.get(m.repo);
-      if (note) lines.push(`| ↳ _${note.trim()}_ |||||||`);
+      if (note) lines.push(`| ↳ _${mdEscapeInline(note.trim())}_ |||||||`);
     }
     if (report.repoLongTail) {
       lines.push('');
@@ -163,7 +179,7 @@ export function renderMarkdown(report: Report): string {
       startDate: report.window.startDate,
       endDate: report.window.endDate,
       timezone: report.window.timezone,
-      period: report.window.period
+      period: t(lang, `periodWord.${report.window.period}` as Parameters<typeof t>[1])
     })}`
   );
   lines.push(`- ${t(lang, 'appendix.repos', { scanned: report.orgMetrics.totalReposScanned })}`);

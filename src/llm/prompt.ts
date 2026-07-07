@@ -26,6 +26,8 @@ export function sanitizeTitle(title: string): string {
     // control chars + zero-width/bidi characters used to smuggle instructions
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/g, ' ')
+    // angle brackets could forge a closing </activity-data> delimiter
+    .replace(/[<>]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return cleaned.length > TITLE_MAX_CHARS ? `${cleaned.slice(0, TITLE_MAX_CHARS)}\u2026` : cleaned;

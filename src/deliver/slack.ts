@@ -27,8 +27,9 @@ export async function deliverToSlack(
     let response = await post(webhookUrl, payload, fetchImpl);
 
     if (response.status === 429 || response.status >= 500) {
-      const retryAfter = Number(response.headers.get('retry-after') ?? 2);
-      await sleep(Math.min(retryAfter, 10) * 1000);
+      const retryAfter = Number(response.headers.get('retry-after'));
+      const waitSeconds = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 10) : 2;
+      await sleep(waitSeconds * 1000);
       response = await post(webhookUrl, payload, fetchImpl);
     }
 

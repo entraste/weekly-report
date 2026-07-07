@@ -96,14 +96,23 @@ function zoneOffsetMs(utcMs: number, timeZone: string): number {
 
 /**
  * UTC instant of local midnight for the given calendar date.
- * Two-pass offset resolution handles DST transitions; if midnight does not
- * exist (spring-forward), this lands on the closest valid instant.
+ * Two-pass offset resolution handles DST transitions; when midnight does not
+ * exist (spring-forward at 00:00, e.g. America/Santiago), rolls forward to
+ * the first valid instant of the requested day.
  */
 export function zonedMidnightUtcMs(year: number, month: number, day: number, timeZone: string): number {
   const naive = Date.UTC(year, month - 1, day);
   let utc = naive - zoneOffsetMs(naive, timeZone);
   const refined = naive - zoneOffsetMs(utc, timeZone);
   if (refined !== utc) utc = refined;
+  // Skipped-midnight guard: if we landed on the previous local day, advance
+  // hour by hour (bounded) until we reach the requested calendar date.
+  for (let i = 0; i < 4; i += 1) {
+    const local = localParts(utc, timeZone);
+    if (local.year === year && local.month === month && local.day === day) break;
+    if (Date.UTC(local.year, local.month - 1, local.day) < naive) utc += 3_600_000;
+    else break;
+  }
   return utc;
 }
 
@@ -213,7 +222,20 @@ export function computeWindow(opts: WindowOptions): ReportWindow {
 }
 
 /**
- * Biweekly parity gate: with a weekly cron, only even (or odd) ISO weeks run.
+ * Absolute fortnight index of a calendar date's week: weeks counted from
+ * Monday 1970-01-05, continuous across year boundaries — unlike ISO-week
+ * parity, which repeats (53→1) across 53-week ISO years and would double or
+ * skip a fortnight.
+ */
+export function weekIndex(year: number, month: number, day: number, dow: number): number {
+  const monday = addDaysYmd({ year, month, day }, -(dow - 1));
+  const daysSinceEpoch = Math.round(Date.UTC(monday.year, monday.month - 1, monday.day) / 86_400_000);
+  return Math.floor((daysSinceEpoch - 4) / 7); // 1970-01-05 (day 4) = week 0
+}
+
+/**
+ * Biweekly parity gate: with a weekly cron, only alternate weeks run
+ * (anchor picks which of the two fortnight phases).
  * workflow_dispatch bypasses this — a human asking for a report gets one.
  */
 export function biweeklyShouldRun(opts: {
@@ -224,8 +246,9 @@ export function biweeklyShouldRun(opts: {
 }): boolean {
   if (opts.isManualDispatch) return true;
   const today = localParts(opts.nowMs, opts.timezone);
-  const week = isoWeek(today.year, today.month, today.day);
-  return opts.anchor === 'even' ? week % 2 === 0 : week % 2 === 1;
+  const index = weekIndex(today.year, today.month, today.day, today.dow);
+  const parity = ((index % 2) + 2) % 2;
+  return opts.anchor === 'even' ? parity === 0 : parity === 1;
 }
 
 /** ISO-8601 UTC timestamp (second precision) for GitHub search qualifiers. */

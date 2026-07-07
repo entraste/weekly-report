@@ -94,12 +94,19 @@ export function computeHighlights(
     let best: { pr: PrLite; reviewer: string; minutes: number } | null = null;
     for (const pr of dedupePrs(data.prsOpened, data.prsMerged)) {
       const created = Date.parse(pr.createdAt);
+      // The PR's true FIRST eligible review — and it must fall inside the
+      // window, otherwise a pre-window review would win (or repeat) here.
+      let first: { author: string; ts: number } | null = null;
       for (const review of pr.reviews) {
         if (!review.submittedAt || isBot(review.author, config) || review.author === pr.author) continue;
-        const minutes = (Date.parse(review.submittedAt) - created) / 60_000;
-        if (minutes < minMinutes) continue; // ignore instant rubber stamps
-        if (!best || minutes < best.minutes) best = { pr, reviewer: review.author, minutes };
+        const ts = Date.parse(review.submittedAt);
+        if (!first || ts < first.ts) first = { author: review.author, ts };
       }
+      if (!first) continue;
+      if (first.ts < data.window.startUtcMs || first.ts >= data.window.endUtcMs) continue;
+      const minutes = (first.ts - created) / 60_000;
+      if (minutes < minMinutes) continue; // ignore instant rubber stamps
+      if (!best || minutes < best.minutes) best = { pr, reviewer: first.author, minutes };
     }
     if (best) {
       results.push({

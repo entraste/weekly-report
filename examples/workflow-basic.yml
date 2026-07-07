@@ -44,6 +44,7 @@ jobs:
           language: en # or: es
           timezone: UTC # e.g. America/Montevideo
 
-          # Custom window when triggered manually:
+          # Custom window when triggered manually — providing BOTH dates
+          # switches the report window to that range automatically:
           start-date: ${{ inputs.start-date }}
           end-date: ${{ inputs.end-date }}

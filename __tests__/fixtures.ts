@@ -77,6 +77,7 @@ export function collectedData(partial: Partial<CollectedData> = {}): CollectedDa
     ],
     prsOpened: [],
     prsMerged: [],
+    prsClosedUnmerged: [],
     openPrs: [],
     openPrTotalCount: 0,
     issuesOpened: [],

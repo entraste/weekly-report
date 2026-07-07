@@ -38,10 +38,13 @@ interface WindowedReview extends ReviewLite {
 /** All reviews submitted inside the window, deduped across PR sets. */
 export function reviewsInWindow(data: CollectedData): WindowedReview[] {
   const seen = new Map<string, WindowedReview>();
-  const allPrs = dedupePrs(data.prsOpened, data.prsMerged, data.openPrs);
+  const allPrs = dedupePrs(data.prsOpened, data.prsMerged, data.prsClosedUnmerged, data.openPrs);
   for (const pr of allPrs) {
     for (const review of pr.reviews) {
       if (!review.submittedAt) continue;
+      // GitHub creates COMMENTED reviews when the author replies to threads —
+      // self-reviews are not review work.
+      if (review.author === pr.author) continue;
       const ts = Date.parse(review.submittedAt);
       if (ts < data.window.startUtcMs || ts >= data.window.endUtcMs) continue;
       const key = `${pr.repo}#${pr.number}@${review.author}@${review.submittedAt}`;
