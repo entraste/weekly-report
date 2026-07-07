@@ -7,7 +7,7 @@ import type { CollectedData } from '../github/types.js';
 import { periodLabel } from '../i18n/index.js';
 import type { ResolvedConfig } from '../schema/index.js';
 import type { AggregatedMetrics } from './aggregate.js';
-import type { HighlightData, LlmUsage, Narrative, NarrativeStatus, Report } from './types.js';
+import type { HighlightData, LlmUsage, MergedPrGroup, Narrative, NarrativeStatus, Report } from './types.js';
 
 export interface BuildReportOptions {
   data: CollectedData;
@@ -41,6 +41,39 @@ export function buildReport(opts: BuildReportOptions): Report {
         }
       : null;
 
+  // Per-repo merged-PR detail, ordered like the repo table (most active first).
+  const mergedPrsByRepo: MergedPrGroup[] = [];
+  if (config.report.listMergedPrs) {
+    const byRepo = new Map<string, typeof data.prsMerged>();
+    for (const pr of data.prsMerged) {
+      const list = byRepo.get(pr.repo) ?? [];
+      list.push(pr);
+      byRepo.set(pr.repo, list);
+    }
+    const repoOrder = [
+      ...metrics.byRepo.map((m) => m.repo),
+      ...[...byRepo.keys()].filter((r) => !metrics.byRepo.some((m) => m.repo === r)).sort()
+    ];
+    for (const repo of repoOrder) {
+      const prs = byRepo.get(repo);
+      if (!prs || prs.length === 0) continue;
+      const sorted = [...prs].sort((a, b) => (a.mergedAt ?? '').localeCompare(b.mergedAt ?? ''));
+      mergedPrsByRepo.push({
+        repo,
+        total: sorted.length,
+        prs: sorted.slice(0, config.report.mergedPrsPerRepo).map((pr) => ({
+          number: pr.number,
+          title: pr.title,
+          url: pr.url,
+          author: pr.author,
+          mergedAt: pr.mergedAt ?? '',
+          additions: pr.additions,
+          deletions: pr.deletions
+        }))
+      });
+    }
+  }
+
   return {
     org: config.org,
     window,
@@ -53,6 +86,7 @@ export function buildReport(opts: BuildReportOptions): Report {
     repoLongTail,
     personMetrics: metrics.byPerson.slice(0, config.people.maxListed),
     highlights: opts.highlights,
+    mergedPrsByRepo,
     enabledHighlightIds: enabledHighlights(config),
     narrative: opts.narrative,
     narrativeStatus: opts.narrativeStatus,

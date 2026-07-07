@@ -50,6 +50,9 @@ export interface ResolvedConfig {
     title: string;
     reposMax: number;
     narratedRepos: number;
+    /** Detailed per-repo merged-PR list in the full report (client-ready detail). */
+    listMergedPrs: boolean;
+    mergedPrsPerRepo: number;
   };
 
   llm: {
@@ -119,7 +122,13 @@ export const CONFIG_DEFAULTS: ConfigDefaults = {
     botPatterns: ['*[bot]', 'dependabot*', 'renovate*'],
     maxListed: 20
   },
-  report: { title: '{org} Engineering Report — {period-label}', reposMax: 25, narratedRepos: 5 },
+  report: {
+    title: '{org} Engineering Report — {period-label}',
+    reposMax: 25,
+    narratedRepos: 5,
+    listMergedPrs: true,
+    mergedPrsPerRepo: 20
+  },
   llm: {
     provider: 'auto',
     model: '',

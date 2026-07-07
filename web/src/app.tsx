@@ -358,6 +358,11 @@ export function App() {
               </Field>
             </div>
             <Toggle checked={v.excludeBots} onChange={(x) => set({ excludeBots: x })} label="Exclude bots from contributor stats" />
+            <Toggle
+              checked={v.listMergedPrs}
+              onChange={(x) => set({ listMergedPrs: x })}
+              label="Detailed list of every merged PR per repo (client-ready)"
+            />
           </Section>
 
           <Section step={5} title="LLM narrative">

@@ -85,7 +85,9 @@ export const configFileSchema = z
       .object({
         title: z.string().optional(),
         'repos-max': z.number().int().positive().optional(),
-        'narrated-repos': z.number().int().nonnegative().optional()
+        'narrated-repos': z.number().int().nonnegative().optional(),
+        'list-merged-prs': z.boolean().optional(),
+        'merged-prs-per-repo': z.number().int().positive().optional()
       })
       .strict()
       .optional(),

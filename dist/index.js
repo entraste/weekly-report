@@ -67074,7 +67074,9 @@ var configFileSchema = external_exports.object({
   report: external_exports.object({
     title: external_exports.string().optional(),
     "repos-max": external_exports.number().int().positive().optional(),
-    "narrated-repos": external_exports.number().int().nonnegative().optional()
+    "narrated-repos": external_exports.number().int().nonnegative().optional(),
+    "list-merged-prs": external_exports.boolean().optional(),
+    "merged-prs-per-repo": external_exports.number().int().positive().optional()
   }).strict().optional(),
   llm: external_exports.object({
     provider: external_exports.enum(LLM_PROVIDERS).optional(),
@@ -67120,7 +67122,13 @@ var CONFIG_DEFAULTS = {
     botPatterns: ["*[bot]", "dependabot*", "renovate*"],
     maxListed: 20
   },
-  report: { title: "{org} Engineering Report \u2014 {period-label}", reposMax: 25, narratedRepos: 5 },
+  report: {
+    title: "{org} Engineering Report \u2014 {period-label}",
+    reposMax: 25,
+    narratedRepos: 5,
+    listMergedPrs: true,
+    mergedPrsPerRepo: 20
+  },
   llm: {
     provider: "auto",
     model: "",
@@ -67555,7 +67563,9 @@ function resolveConfig(opts) {
     report: {
       title: file.report?.title ?? d.report.title,
       reposMax: file.report?.["repos-max"] ?? d.report.reposMax,
-      narratedRepos: file.report?.["narrated-repos"] ?? d.report.narratedRepos
+      narratedRepos: file.report?.["narrated-repos"] ?? d.report.narratedRepos,
+      listMergedPrs: file.report?.["list-merged-prs"] ?? d.report.listMergedPrs,
+      mergedPrsPerRepo: file.report?.["merged-prs-per-repo"] ?? d.report.mergedPrsPerRepo
     },
     llm: {
       provider,
@@ -70091,6 +70101,11 @@ var STRINGS = {
     "highlight.first-time-contributors": "\u{1F389} **First-time contributors**: {logins} \u2014 welcome!",
     "highlight.most-active-repo": "\u{1F525} **Most active repo**: **{repo}** ({prsMerged} PRs merged, {commits} commits).",
     "highlight.entry": "@{login} ({count})",
+    // Merged-PR detail
+    "section.mergedPrs": "Merged PRs by repository",
+    "mergedPrs.summary": "\u{1F4E6} View all {total} merged PRs (detail per repository)",
+    "mergedPrs.item": "[{repo}#{number}]({url}) \u201C{title}\u201D \u2014 @{author} (+{additions}/\u2212{deletions}, {date})",
+    "mergedPrs.more": "\u2026and {count} more",
     // Narrative fallbacks
     "narrative.skipped-no-key": "_No LLM key configured \u2014 this report is metrics-only. Add anthropic-api-key or openai-api-key for a narrative summary._",
     "narrative.skipped-dry-run": "_Dry run \u2014 LLM narrative skipped._",
@@ -70167,6 +70182,10 @@ var STRINGS = {
     "highlight.first-time-contributors": "\u{1F389} **Nuevos contribuidores**: {logins} \u2014 \xA1bienvenidos!",
     "highlight.most-active-repo": "\u{1F525} **Repo m\xE1s activo**: **{repo}** ({prsMerged} PRs mergeados, {commits} commits).",
     "highlight.entry": "@{login} ({count})",
+    "section.mergedPrs": "PRs mergeados por repositorio",
+    "mergedPrs.summary": "\u{1F4E6} Ver los {total} PRs mergeados (detalle por repositorio)",
+    "mergedPrs.item": "[{repo}#{number}]({url}) \u201C{title}\u201D \u2014 @{author} (+{additions}/\u2212{deletions}, {date})",
+    "mergedPrs.more": "\u2026y {count} m\xE1s",
     "narrative.skipped-no-key": "_Sin API key de LLM \u2014 este reporte es solo de m\xE9tricas. Agreg\xE1 anthropic-api-key u openai-api-key para el resumen narrativo._",
     "narrative.skipped-dry-run": "_Dry run \u2014 se omiti\xF3 la narrativa del LLM._",
     "narrative.skipped-disabled": "_Narrativa LLM deshabilitada (llm-provider: none)._",
@@ -70257,6 +70276,37 @@ function buildReport(opts) {
     prsMerged: tail.reduce((a, m) => a + m.prsMerged, 0),
     commits: tail.reduce((a, m) => a + m.commits, 0)
   } : null;
+  const mergedPrsByRepo = [];
+  if (config.report.listMergedPrs) {
+    const byRepo = /* @__PURE__ */ new Map();
+    for (const pr of data.prsMerged) {
+      const list = byRepo.get(pr.repo) ?? [];
+      list.push(pr);
+      byRepo.set(pr.repo, list);
+    }
+    const repoOrder = [
+      ...metrics.byRepo.map((m) => m.repo),
+      ...[...byRepo.keys()].filter((r) => !metrics.byRepo.some((m) => m.repo === r)).sort()
+    ];
+    for (const repo of repoOrder) {
+      const prs = byRepo.get(repo);
+      if (!prs || prs.length === 0) continue;
+      const sorted = [...prs].sort((a, b) => (a.mergedAt ?? "").localeCompare(b.mergedAt ?? ""));
+      mergedPrsByRepo.push({
+        repo,
+        total: sorted.length,
+        prs: sorted.slice(0, config.report.mergedPrsPerRepo).map((pr) => ({
+          number: pr.number,
+          title: pr.title,
+          url: pr.url,
+          author: pr.author,
+          mergedAt: pr.mergedAt ?? "",
+          additions: pr.additions,
+          deletions: pr.deletions
+        }))
+      });
+    }
+  }
   return {
     org: config.org,
     window: window2,
@@ -70269,6 +70319,7 @@ function buildReport(opts) {
     repoLongTail,
     personMetrics: metrics.byPerson.slice(0, config.people.maxListed),
     highlights: opts.highlights,
+    mergedPrsByRepo,
     enabledHighlightIds: enabledHighlights(config),
     narrative: opts.narrative,
     narrativeStatus: opts.narrativeStatus,
@@ -70400,6 +70451,35 @@ function renderMarkdown(report) {
         })
       );
     }
+    lines.push("");
+  }
+  if (report.levels.repo && report.mergedPrsByRepo.length > 0) {
+    lines.push("<details>");
+    lines.push(`<summary>${t(lang, "mergedPrs.summary", { total: report.orgMetrics.prsMerged })}</summary>`);
+    lines.push("");
+    for (const group of report.mergedPrsByRepo) {
+      lines.push(`**${group.repo}** (${group.total})`);
+      lines.push("");
+      for (const pr of group.prs) {
+        lines.push(
+          `- ${t(lang, "mergedPrs.item", {
+            repo: group.repo,
+            number: pr.number,
+            url: pr.url,
+            title: mdEscapeInline(pr.title),
+            author: pr.author,
+            additions: n(pr.additions),
+            deletions: n(pr.deletions),
+            date: pr.mergedAt ? shortDate(pr.mergedAt.slice(0, 10), lang) : "\u2014"
+          })}`
+        );
+      }
+      if (group.total > group.prs.length) {
+        lines.push(`- _${t(lang, "mergedPrs.more", { count: group.total - group.prs.length })}_`);
+      }
+      lines.push("");
+    }
+    lines.push("</details>");
     lines.push("");
   }
   if (report.levels.person && report.personMetrics.length > 0) {
@@ -70541,6 +70621,32 @@ function renderEmailHtml(report) {
           })
         )}</p>`
       );
+    }
+  }
+  if (report.levels.repo && report.mergedPrsByRepo.length > 0) {
+    parts.push(sectionTitle(t(lang, "section.mergedPrs")));
+    for (const group of report.mergedPrsByRepo) {
+      parts.push(
+        `<p style="font-size:14px;margin:12px 0 4px;"><strong>${escapeHtml(group.repo)}</strong> <span style="color:#57606a;">(${group.total})</span></p>`
+      );
+      const items = group.prs.map(
+        (pr) => `<li>${mdInlineToHtml(
+          t(lang, "mergedPrs.item", {
+            repo: group.repo,
+            number: pr.number,
+            url: pr.url,
+            title: pr.title,
+            author: pr.author,
+            additions: n2(pr.additions),
+            deletions: n2(pr.deletions),
+            date: pr.mergedAt ? shortDate(pr.mergedAt.slice(0, 10), lang) : "\u2014"
+          })
+        )}</li>`
+      );
+      if (group.total > group.prs.length) {
+        items.push(`<li><em>${escapeHtml(t(lang, "mergedPrs.more", { count: group.total - group.prs.length }))}</em></li>`);
+      }
+      parts.push(`<ul style="padding-left:20px;font-size:13.5px;line-height:1.7;color:#1f2328;margin:4px 0;">${items.join("")}</ul>`);
     }
   }
   if (report.levels.person && report.personMetrics.length > 0) {
@@ -113136,6 +113242,7 @@ function writeReportFiles(markdown, html, report) {
         repoMetrics: report.repoMetrics,
         personMetrics: report.personMetrics,
         highlights: report.highlights,
+        mergedPrsByRepo: report.mergedPrsByRepo,
         narrativeStatus: report.narrativeStatus,
         llmUsage: report.llmUsage,
         warnings: report.warnings

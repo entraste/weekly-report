@@ -65,6 +65,23 @@ export type HighlightData =
   | { id: 'first-time-contributors'; logins: string[] }
   | { id: 'most-active-repo'; repo: string; prsMerged: number; commits: number };
 
+export interface MergedPrDetail {
+  number: number;
+  title: string;
+  url: string;
+  author: string;
+  mergedAt: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface MergedPrGroup {
+  repo: string;
+  /** Capped at report.merged-prs-per-repo; `total` is the uncapped count. */
+  prs: MergedPrDetail[];
+  total: number;
+}
+
 export interface Narrative {
   executiveSummary: string;
   repoNotes: Array<{ repo: string; note: string }>;
@@ -98,6 +115,8 @@ export interface Report {
   /** Sorted by activity, bots/opt-outs excluded, capped at people.max-listed. */
   personMetrics: PersonMetrics[];
   highlights: HighlightData[];
+  /** Per-repo merged-PR detail (client-ready), empty when disabled. */
+  mergedPrsByRepo: MergedPrGroup[];
   enabledHighlightIds: HighlightId[];
   narrative: Narrative | null;
   narrativeStatus: NarrativeStatus;

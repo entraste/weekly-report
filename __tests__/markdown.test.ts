@@ -80,6 +80,15 @@ describe('renderMarkdown', () => {
     expect(md).toContain('No tracked activity');
   });
 
+  it('includes the collapsible per-repo merged-PR detail', () => {
+    const md = renderMarkdown(makeReport('en', true));
+    expect(md).toContain('<details>');
+    expect(md).toContain('View all 4 merged PRs');
+    expect(md).toContain('**api** (2)');
+    expect(md).toContain('[api#1](https://github.com/acme/api/pull/1)');
+    expect(md).toContain('“Add rate limiter” — @alice');
+  });
+
   it('respects disabled report levels', () => {
     const config = testConfig({ 'report-levels': 'org' });
     const data = busyWeek();

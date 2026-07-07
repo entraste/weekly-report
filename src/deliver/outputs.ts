@@ -37,6 +37,7 @@ export function writeReportFiles(markdown: string, html: string, report: Report)
         repoMetrics: report.repoMetrics,
         personMetrics: report.personMetrics,
         highlights: report.highlights,
+        mergedPrsByRepo: report.mergedPrsByRepo,
         narrativeStatus: report.narrativeStatus,
         llmUsage: report.llmUsage,
         warnings: report.warnings

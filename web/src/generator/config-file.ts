@@ -22,6 +22,10 @@ export function buildConfigObject(state: ConfiguratorState): Record<string, unkn
     };
   }
 
+  if (!state.listMergedPrs) {
+    config.report = { 'list-merged-prs': false };
+  }
+
   const people: Record<string, unknown> = {};
   if (!state.excludeBots) people['exclude-bots'] = false;
   const excluded = state.peopleExclude

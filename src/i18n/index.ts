@@ -55,6 +55,12 @@ const STRINGS = {
     'highlight.most-active-repo': '🔥 **Most active repo**: **{repo}** ({prsMerged} PRs merged, {commits} commits).',
     'highlight.entry': '@{login} ({count})',
 
+    // Merged-PR detail
+    'section.mergedPrs': 'Merged PRs by repository',
+    'mergedPrs.summary': '📦 View all {total} merged PRs (detail per repository)',
+    'mergedPrs.item': '[{repo}#{number}]({url}) “{title}” — @{author} (+{additions}/−{deletions}, {date})',
+    'mergedPrs.more': '…and {count} more',
+
     // Narrative fallbacks
     'narrative.skipped-no-key': '_No LLM key configured — this report is metrics-only. Add anthropic-api-key or openai-api-key for a narrative summary._',
     'narrative.skipped-dry-run': '_Dry run — LLM narrative skipped._',
@@ -139,6 +145,11 @@ const STRINGS = {
     'highlight.first-time-contributors': '🎉 **Nuevos contribuidores**: {logins} — ¡bienvenidos!',
     'highlight.most-active-repo': '🔥 **Repo más activo**: **{repo}** ({prsMerged} PRs mergeados, {commits} commits).',
     'highlight.entry': '@{login} ({count})',
+
+    'section.mergedPrs': 'PRs mergeados por repositorio',
+    'mergedPrs.summary': '📦 Ver los {total} PRs mergeados (detalle por repositorio)',
+    'mergedPrs.item': '[{repo}#{number}]({url}) “{title}” — @{author} (+{additions}/−{deletions}, {date})',
+    'mergedPrs.more': '…y {count} más',
 
     'narrative.skipped-no-key': '_Sin API key de LLM — este reporte es solo de métricas. Agregá anthropic-api-key u openai-api-key para el resumen narrativo._',
     'narrative.skipped-dry-run': '_Dry run — se omitió la narrativa del LLM._',

@@ -279,7 +279,9 @@ export function resolveConfig(opts: ResolveOptions): ResolvedConfig {
     report: {
       title: file.report?.title ?? d.report.title,
       reposMax: file.report?.['repos-max'] ?? d.report.reposMax,
-      narratedRepos: file.report?.['narrated-repos'] ?? d.report.narratedRepos
+      narratedRepos: file.report?.['narrated-repos'] ?? d.report.narratedRepos,
+      listMergedPrs: file.report?.['list-merged-prs'] ?? d.report.listMergedPrs,
+      mergedPrsPerRepo: file.report?.['merged-prs-per-repo'] ?? d.report.mergedPrsPerRepo
     },
 
     llm: {

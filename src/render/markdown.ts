@@ -2,7 +2,7 @@
  * Markdown renderer — the canonical full report (job summary, artifact, and
  * the text/plain email alternative all derive from this).
  */
-import { humanDuration, t } from '../i18n/index.js';
+import { humanDuration, shortDate, t } from '../i18n/index.js';
 import type { HighlightData, Report } from '../metrics/types.js';
 
 function n(value: number): string {
@@ -146,6 +146,37 @@ export function renderMarkdown(report: Report): string {
         })
       );
     }
+    lines.push('');
+  }
+
+  // 4b. Merged-PR detail (client-ready), collapsible so it never overwhelms
+  if (report.levels.repo && report.mergedPrsByRepo.length > 0) {
+    lines.push('<details>');
+    lines.push(`<summary>${t(lang, 'mergedPrs.summary', { total: report.orgMetrics.prsMerged })}</summary>`);
+    lines.push('');
+    for (const group of report.mergedPrsByRepo) {
+      lines.push(`**${group.repo}** (${group.total})`);
+      lines.push('');
+      for (const pr of group.prs) {
+        lines.push(
+          `- ${t(lang, 'mergedPrs.item', {
+            repo: group.repo,
+            number: pr.number,
+            url: pr.url,
+            title: mdEscapeInline(pr.title),
+            author: pr.author,
+            additions: n(pr.additions),
+            deletions: n(pr.deletions),
+            date: pr.mergedAt ? shortDate(pr.mergedAt.slice(0, 10), lang) : '—'
+          })}`
+        );
+      }
+      if (group.total > group.prs.length) {
+        lines.push(`- _${t(lang, 'mergedPrs.more', { count: group.total - group.prs.length })}_`);
+      }
+      lines.push('');
+    }
+    lines.push('</details>');
     lines.push('');
   }
 

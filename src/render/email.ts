@@ -2,7 +2,7 @@
  * Email HTML renderer — table-based layout with inline CSS (Outlook-safe).
  * The text/plain alternative is the markdown report.
  */
-import { humanDuration, t } from '../i18n/index.js';
+import { humanDuration, shortDate, t } from '../i18n/index.js';
 import type { Report } from '../metrics/types.js';
 import { hasTrackedActivity, keyNumberRows, renderHighlight } from './markdown.js';
 
@@ -126,6 +126,34 @@ export function renderEmailHtml(report: Report): string {
           })
         )}</p>`
       );
+    }
+  }
+
+  // Merged-PR detail per repo (the client-facing breakdown)
+  if (report.levels.repo && report.mergedPrsByRepo.length > 0) {
+    parts.push(sectionTitle(t(lang, 'section.mergedPrs')));
+    for (const group of report.mergedPrsByRepo) {
+      parts.push(
+        `<p style="font-size:14px;margin:12px 0 4px;"><strong>${escapeHtml(group.repo)}</strong> <span style="color:#57606a;">(${group.total})</span></p>`
+      );
+      const items = group.prs.map((pr) =>
+        `<li>${mdInlineToHtml(
+          t(lang, 'mergedPrs.item', {
+            repo: group.repo,
+            number: pr.number,
+            url: pr.url,
+            title: pr.title,
+            author: pr.author,
+            additions: n(pr.additions),
+            deletions: n(pr.deletions),
+            date: pr.mergedAt ? shortDate(pr.mergedAt.slice(0, 10), lang) : '—'
+          })
+        )}</li>`
+      );
+      if (group.total > group.prs.length) {
+        items.push(`<li><em>${escapeHtml(t(lang, 'mergedPrs.more', { count: group.total - group.prs.length }))}</em></li>`);
+      }
+      parts.push(`<ul style="padding-left:20px;font-size:13.5px;line-height:1.7;color:#1f2328;margin:4px 0;">${items.join('')}</ul>`);
     }
   }
 

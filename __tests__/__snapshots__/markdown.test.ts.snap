@@ -45,6 +45,21 @@ A strong week focused on the API: rate limiting landed and review flow stayed he
 | **web** | 2 | 0 | 1 | 1/0 | 31 | +6,500/−5,000 |
 | **docs** | 0 | 1 | 0 | 0/0 | 3 | +0/−0 |
 
+<details>
+<summary>📦 View all 4 merged PRs (detail per repository)</summary>
+
+**api** (2)
+
+- [api#1](https://github.com/acme/api/pull/1) “Add rate limiter” — @alice (+400/−120, Jun 30)
+- [api#2](https://github.com/acme/api/pull/2) “Fix N+1 in reports” — @dave (+60/−30, Jul 2)
+
+**web** (2)
+
+- [web#4](https://github.com/acme/web/pull/4) “Bump deps” — @depbot[bot] (+5,000/−4,800, Jul 1)
+- [web#3](https://github.com/acme/web/pull/3) “New dashboard” — @carol (+1,500/−200, Jul 3)
+
+</details>
+
 ## Contributors
 
 | Contributor | PRs merged | PRs opened | Reviews | Merges | Issues opened |
@@ -112,6 +127,21 @@ A strong week focused on the API: rate limiting landed and review flow stayed he
 | ↳ _Rate limiter + N+1 fix merged; billing refactor still waiting._ |||||||
 | **web** | 2 | 0 | 1 | 1/0 | 31 | +6,500/−5,000 |
 | **docs** | 0 | 1 | 0 | 0/0 | 3 | +0/−0 |
+
+<details>
+<summary>📦 Ver los 4 PRs mergeados (detalle por repositorio)</summary>
+
+**api** (2)
+
+- [api#1](https://github.com/acme/api/pull/1) “Add rate limiter” — @alice (+400/−120, 30 jun)
+- [api#2](https://github.com/acme/api/pull/2) “Fix N+1 in reports” — @dave (+60/−30, 2 jul)
+
+**web** (2)
+
+- [web#4](https://github.com/acme/web/pull/4) “Bump deps” — @depbot[bot] (+5,000/−4,800, 1 jul)
+- [web#3](https://github.com/acme/web/pull/3) “New dashboard” — @carol (+1,500/−200, 3 jul)
+
+</details>
 
 ## Contribuidores
 
