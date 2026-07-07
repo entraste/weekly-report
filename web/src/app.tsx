@@ -151,7 +151,7 @@ export function App() {
         <div class="form-column">
           <Section step={1} title="Action & organization">
             <Field label="Published action (owner/repo)" hint="Where this action lives once published to the Marketplace.">
-              <TextInput mono value={v.actionRef} onInput={(x) => set({ actionRef: x })} placeholder="ombu/ombupulse" />
+              <TextInput mono value={v.actionRef} onInput={(x) => set({ actionRef: x })} placeholder="ombustudio/weekly-report" />
             </Field>
             <Field label="Target repo for the workflow (optional)" hint="Enables one-click 'Create in GitHub' links (assumes the default branch is main).">
               <TextInput mono value={v.targetRepo} onInput={(x) => set({ targetRepo: x })} placeholder="acme/reports" />
@@ -468,7 +468,7 @@ export function App() {
       <footer>
         <p>
           Generated files reference secrets by name only — values stay in GitHub. · Cron fires in UTC and is best-effort.
-          · <a href="https://github.com/ombu/ombupulse">Action source &amp; docs</a>
+          · <a href="https://github.com/ombustudio/weekly-report">Action source &amp; docs</a>
         </p>
       </footer>
     </div>

@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   plugins: [preact()],
   // GitHub Pages serves at /<repo-name>/
-  base: '/ombupulse/',
+  base: '/weekly-report/',
   resolve: {
     alias: {
       // Single source of truth: the action's own schema module.

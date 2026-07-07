@@ -27,7 +27,7 @@ export function lint(state: ConfiguratorState): Warning[] {
   if (!state.actionRef || state.actionRef.startsWith('OWNER/')) {
     warnings.push({
       level: 'warn',
-      message: 'Replace the OWNER/... placeholder with the published action reference (e.g. ombu/ombupulse).'
+      message: 'Replace the OWNER/... placeholder with the published action reference (e.g. ombustudio/weekly-report).'
     });
   }
 

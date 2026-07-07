@@ -27,7 +27,7 @@ jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-      - uses: ombu/ombupulse@v1
+      - uses: ombustudio/weekly-report@v1
         with:
           github-token: ${{ secrets.ORG_REPORT_GITHUB_TOKEN }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -105,7 +105,7 @@ The window is always the **previous complete calendar period** in your timezone 
 
 A static web configurator (GitHub Pages) generates your workflow YAML + config file from a form — including auth path (PAT vs GitHub App), schedule builder, language and delivery setup. It never sees your secrets: it only emits `${{ secrets.X }}` references plus a checklist of secrets to create.
 
-→ **https://ombu.github.io/ombupulse/** (after enabling Pages on this repo)
+→ **https://ombustudio.github.io/weekly-report/** (after enabling Pages on this repo)
 
 ## Development
 
