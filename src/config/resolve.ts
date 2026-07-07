@@ -141,15 +141,29 @@ export function resolveConfig(opts: ResolveOptions): ResolvedConfig {
   const file = opts.configFile ?? {};
   const d = CONFIG_DEFAULTS;
 
-  const githubToken = values['github-token']!;
-  if (!githubToken) {
+  const githubTokensRaw = parseList(values['github-token']);
+  if (githubTokensRaw.length === 0) {
     throw new ActionError('E_BAD_INPUT', 'github-token is required.', [
       'For org-wide reports use an org fine-grained PAT or a GitHub App token — the default GITHUB_TOKEN only sees this repository.'
     ]);
   }
 
-  const org = values['org'] || opts.repositoryOwner;
-  if (!org) throw new ActionError('E_BAD_INPUT', 'Could not determine the organization to report on.');
+  const orgs = parseList(values['org'] || opts.repositoryOwner);
+  if (orgs.length === 0) throw new ActionError('E_BAD_INPUT', 'Could not determine the organization to report on.');
+  // Token↔org alignment: 1 token for all orgs, or exactly one per org.
+  let githubTokens: string[];
+  if (githubTokensRaw.length === 1) {
+    githubTokens = orgs.map(() => githubTokensRaw[0]!);
+  } else if (githubTokensRaw.length === orgs.length) {
+    githubTokens = githubTokensRaw;
+  } else {
+    throw new ActionError(
+      'E_BAD_INPUT',
+      `github-token has ${githubTokensRaw.length} tokens but org lists ${orgs.length} organizations.`,
+      ['Pass ONE token that can read every org, or exactly one token per org in the same order.']
+    );
+  }
+  const org = orgs.join(' + ');
 
   const language = parseEnum<Language>(
     pick(explicit['language'] ? values['language'] : undefined, file.language, d.language),
@@ -246,7 +260,9 @@ export function resolveConfig(opts: ResolveOptions): ResolvedConfig {
 
   return {
     org,
-    githubToken,
+    orgs,
+    githubToken: githubTokens[0]!,
+    githubTokens,
     timezone,
     language,
     period,

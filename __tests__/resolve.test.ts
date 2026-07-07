@@ -171,6 +171,29 @@ describe('resolveConfig', () => {
     expect(cfg.startDate).toBe('2026-06-01');
   });
 
+  it('consolidated multi-org: token/org alignment', () => {
+    const two = resolveConfig({
+      getInput: stubInputs({ 'github-token': 'tok-a, tok-b', org: 'orga, orgb' }),
+      repositoryOwner: 'acme'
+    });
+    expect(two.orgs).toEqual(['orga', 'orgb']);
+    expect(two.githubTokens).toEqual(['tok-a', 'tok-b']);
+    expect(two.org).toBe('orga + orgb');
+
+    const shared = resolveConfig({
+      getInput: stubInputs({ 'github-token': 'tok-x', org: 'orga, orgb' }),
+      repositoryOwner: 'acme'
+    });
+    expect(shared.githubTokens).toEqual(['tok-x', 'tok-x']);
+
+    expect(() =>
+      resolveConfig({
+        getInput: stubInputs({ 'github-token': 'a,b,c', org: 'orga, orgb' }),
+        repositoryOwner: 'acme'
+      })
+    ).toThrowError(/2 organizations/);
+  });
+
   it('dry-run parses as boolean', () => {
     const cfg = resolveConfig({ getInput: stubInputs({ ...BASE, 'dry-run': 'true' }), repositoryOwner: 'acme' });
     expect(cfg.dryRun).toBe(true);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { aggregate, dedupePrs, reviewsInWindow } from '../src/metrics/aggregate.js';
+import { mergeOrgData } from '../src/github/collect.js';
 import { computeHighlights } from '../src/metrics/highlights.js';
 import { NOW, busyWeek, collectedData, pr, testConfig } from './fixtures.js';
 
@@ -69,6 +70,52 @@ describe('dedupePrs / reviewsInWindow', () => {
     const reviews = reviewsInWindow(data);
     expect(reviews).toHaveLength(1);
     expect(reviews[0]!.author).toBe('carol');
+  });
+});
+
+describe('mergeOrgData (consolidated multi-org)', () => {
+  it('is identity for a single org', () => {
+    const data = busyWeek();
+    expect(mergeOrgData([data])).toBe(data);
+  });
+
+  it('qualifies repos as org/repo and merges counts', () => {
+    const a = busyWeek(); // org acme: repos api/web/docs
+    const b = collectedData({
+      repos: [{ name: 'core', archived: false, fork: false, isPrivate: true }],
+      prsMerged: [pr({ repo: 'core', number: 900, title: 'Hotfix', author: 'zoe', mergedAt: '2026-07-01T10:00:00Z' })],
+      commitsByRepo: { core: 7 },
+      openPrCountByRepo: { core: 1 },
+      openPrTotalCount: 1,
+      warnings: ['partial visibility']
+    });
+    b.org = 'globex';
+
+    const merged = mergeOrgData([a, b]);
+    expect(merged.org).toBe('acme + globex');
+    expect(merged.repos.map((r) => r.name)).toContain('acme/api');
+    expect(merged.repos.map((r) => r.name)).toContain('globex/core');
+    expect(merged.prsMerged.some((p) => p.repo === 'globex/core')).toBe(true);
+    expect(merged.commitsByRepo['acme/api']).toBe(42);
+    expect(merged.commitsByRepo['globex/core']).toBe(7);
+    expect(merged.openPrTotalCount).toBe(4); // 3 + 1
+    expect(merged.warnings).toContain('[globex] partial visibility');
+
+    // aggregation works transparently on qualified names, people merge across orgs
+    const config = testConfig();
+    const m = aggregate(merged, config);
+    expect(m.byRepo.some((r) => r.repo === 'globex/core')).toBe(true);
+    expect(m.org.prsMerged).toBe(5);
+  });
+
+  it('keeps open PRs oldest-first across orgs', () => {
+    const a = busyWeek();
+    const b = collectedData({
+      openPrs: [pr({ repo: 'core', number: 901, createdAt: '2026-01-01T00:00:00Z' })]
+    });
+    b.org = 'globex';
+    const merged = mergeOrgData([a, b]);
+    expect(merged.openPrs[0]!.repo).toBe('globex/core'); // oldest overall first
   });
 });
 

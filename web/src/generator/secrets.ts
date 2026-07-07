@@ -47,7 +47,7 @@ export function secretsChecklist(state: ConfiguratorState): SecretItem[] {
         how: `Same procedure as the main PAT, but Resource owner = ${entry.org || 'that org'}.`
       });
     }
-    if (state.slackEnabled && entry.slackSecret && !items.some((i) => i.name === entry.slackSecret)) {
+    if (state.multiOrgMode === 'matrix' && state.slackEnabled && entry.slackSecret && !items.some((i) => i.name === entry.slackSecret)) {
       items.push({
         name: entry.slackSecret,
         kind: 'secret',

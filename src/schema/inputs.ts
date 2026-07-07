@@ -39,7 +39,8 @@ export const INPUT_DEFS: readonly InputDef[] = [
     description:
       'Token with org-wide read access. The default GITHUB_TOKEN only sees the current repo — ' +
       'for org-wide reports pass an org fine-grained PAT (All repositories: Metadata, Pull requests, ' +
-      'Issues, Contents — read-only) or a GitHub App token from actions/create-github-app-token.',
+      'Issues, Contents — read-only) or a GitHub App token from actions/create-github-app-token. ' +
+      'For a CONSOLIDATED multi-org report pass one token per org (comma/newline-separated, same order as `org`), or a single token that can see them all.',
     required: true,
     secret: true,
     suggestedSecretName: 'ORG_REPORT_GITHUB_TOKEN',
@@ -48,7 +49,8 @@ export const INPUT_DEFS: readonly InputDef[] = [
   {
     key: 'org',
     description:
-      'Organization login to report on. Defaults to the owner of the repository running the workflow.',
+      'Organization(s) to report on — one login, or a comma-separated list for a single CONSOLIDATED report ' +
+      '(repos appear as org/repo). Defaults to the owner of the repository running the workflow.',
     required: false,
     default: '${{ github.repository_owner }}',
     secret: false,

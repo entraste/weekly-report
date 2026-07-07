@@ -30,6 +30,21 @@ export function isMultiOrg(state: ConfiguratorState): boolean {
   return state.extraOrgs.length > 0;
 }
 
+export function isMatrixMode(state: ConfiguratorState): boolean {
+  return isMultiOrg(state) && state.multiOrgMode === 'matrix';
+}
+
+export function isConsolidated(state: ConfiguratorState): boolean {
+  return isMultiOrg(state) && state.multiOrgMode === 'consolidated';
+}
+
+function allOrgs(state: ConfiguratorState): Array<{ org: string; tokenSecret: string }> {
+  return [
+    { org: state.org.trim(), tokenSecret: state.githubTokenSecret },
+    ...state.extraOrgs.map((e) => ({ org: e.org.trim(), tokenSecret: e.tokenSecret }))
+  ];
+}
+
 /** Matrix rows: primary org first, then each extra org. */
 export function matrixInclude(state: ConfiguratorState): Array<Record<string, string>> {
   const entries = [
@@ -53,16 +68,24 @@ export function matrixInclude(state: ConfiguratorState): Array<Record<string, st
 /** `with:` entries, only for values that differ from action defaults. */
 export function buildWithEntries(state: ConfiguratorState): Record<string, string> {
   const entries: Record<string, string> = {};
-  const multi = isMultiOrg(state);
+  const matrixMode = isMatrixMode(state);
+  const consolidated = isConsolidated(state);
 
-  entries['github-token'] =
-    state.auth === 'pat'
-      ? multi
-        ? '${{ secrets[matrix.token_secret] }}'
-        : `\${{ secrets.${state.githubTokenSecret} }}`
-      : '${{ steps.app-token.outputs.token }}';
+  if (state.auth !== 'pat') {
+    entries['github-token'] = '${{ steps.app-token.outputs.token }}';
+  } else if (matrixMode) {
+    entries['github-token'] = '${{ secrets[matrix.token_secret] }}';
+  } else if (consolidated) {
+    // One token per org, same order as `org` — the action zips them.
+    entries['github-token'] = allOrgs(state)
+      .map((e) => `\${{ secrets.${e.tokenSecret} }}`)
+      .join(',');
+  } else {
+    entries['github-token'] = `\${{ secrets.${state.githubTokenSecret} }}`;
+  }
 
-  if (multi) entries['org'] = '${{ matrix.org }}';
+  if (matrixMode) entries['org'] = '${{ matrix.org }}';
+  else if (consolidated) entries['org'] = allOrgs(state).map((e) => e.org).join(', ');
   else if (state.org.trim()) entries['org'] = state.org.trim();
 
   // Explicit provider pinning: a missing repo secret then fails loudly with
@@ -77,7 +100,7 @@ export function buildWithEntries(state: ConfiguratorState): Record<string, strin
   }
   if (state.llm === 'none') entries['llm-provider'] = 'none';
 
-  if (multi) entries['language'] = '${{ matrix.language }}';
+  if (matrixMode) entries['language'] = '${{ matrix.language }}';
   else if (state.language !== 'en') entries['language'] = state.language;
 
   const levels = ['org', 'repo', 'person'].filter((l) => state.levels[l as keyof typeof state.levels]);
@@ -95,7 +118,7 @@ export function buildWithEntries(state: ConfiguratorState): Record<string, strin
   if (state.reposExclude.trim()) entries['repos-exclude'] = state.reposExclude.trim();
 
   if (state.slackEnabled) {
-    entries['slack-webhook-url'] = multi
+    entries['slack-webhook-url'] = matrixMode
       ? '${{ secrets[matrix.slack_secret] }}'
       : `\${{ secrets.${state.slackSecret} }}`;
   }
@@ -114,7 +137,7 @@ export function buildWithEntries(state: ConfiguratorState): Record<string, strin
 
 export function generateWorkflow(state: ConfiguratorState): string {
   const uses = `${state.actionRef || 'OWNER/weekly-report'}@${state.actionVersion || 'v1'}`;
-  const multi = isMultiOrg(state);
+  const matrixMode = isMatrixMode(state);
 
   const steps: Array<Record<string, unknown>> = [];
   if (state.auth === 'app') {
@@ -126,14 +149,14 @@ export function generateWorkflow(state: ConfiguratorState): string {
         'app-id': `\${{ vars.${state.appIdVar} }}`,
         'private-key': `\${{ secrets.${state.appKeySecret} }}`,
         // Matrix mode: the same App must be installed on every org listed.
-        owner: multi ? '${{ matrix.org }}' : '${{ github.repository_owner }}'
+        owner: matrixMode ? '${{ matrix.org }}' : '${{ github.repository_owner }}'
       }
     });
   }
   steps.push({ uses, with: buildWithEntries(state) });
 
   const reportJob: Record<string, unknown> = {};
-  if (multi) {
+  if (matrixMode) {
     reportJob.name = 'report ${{ matrix.org }}';
     // One org failing must never cancel the others.
     reportJob.strategy = { 'fail-fast': false, matrix: { include: matrixInclude(state) } };

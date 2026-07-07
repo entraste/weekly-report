@@ -27,8 +27,10 @@ export interface ConfiguratorState {
   targetRepo: string;
   org: string;
 
-  /** Non-empty ⇒ the generator emits a multi-org matrix workflow. */
+  /** Non-empty ⇒ multi-org. `multiOrgMode` picks the flavor. */
   extraOrgs: OrgEntry[];
+  /** consolidated = ONE merged report; matrix = one report per org. */
+  multiOrgMode: 'consolidated' | 'matrix';
 
   auth: AuthMode;
   githubTokenSecret: string;
@@ -72,6 +74,7 @@ export const DEFAULT_STATE: ConfiguratorState = {
   org: '',
 
   extraOrgs: [],
+  multiOrgMode: 'consolidated',
 
   auth: 'pat',
   githubTokenSecret: inputDef('github-token').suggestedSecretName ?? 'ORG_REPORT_GITHUB_TOKEN',
@@ -121,7 +124,8 @@ const ENUM_FIELDS: Partial<Record<keyof ConfiguratorState, readonly string[]>> =
   llm: ['anthropic', 'openai', 'none'],
   language: ['en', 'es'],
   biweeklyAnchor: ['even', 'odd'],
-  tone: ['professional-warm', 'neutral', 'playful']
+  tone: ['professional-warm', 'neutral', 'playful'],
+  multiOrgMode: ['consolidated', 'matrix']
 };
 
 export function sanitizeSaved(saved: unknown): Partial<ConfiguratorState> {

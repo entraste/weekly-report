@@ -62782,7 +62782,7 @@ var INPUT_DEFS = [
   // --- Auth / scope ---
   {
     key: "github-token",
-    description: "Token with org-wide read access. The default GITHUB_TOKEN only sees the current repo \u2014 for org-wide reports pass an org fine-grained PAT (All repositories: Metadata, Pull requests, Issues, Contents \u2014 read-only) or a GitHub App token from actions/create-github-app-token.",
+    description: "Token with org-wide read access. The default GITHUB_TOKEN only sees the current repo \u2014 for org-wide reports pass an org fine-grained PAT (All repositories: Metadata, Pull requests, Issues, Contents \u2014 read-only) or a GitHub App token from actions/create-github-app-token. For a CONSOLIDATED multi-org report pass one token per org (comma/newline-separated, same order as `org`), or a single token that can see them all.",
     required: true,
     secret: true,
     suggestedSecretName: "ORG_REPORT_GITHUB_TOKEN",
@@ -62790,7 +62790,7 @@ var INPUT_DEFS = [
   },
   {
     key: "org",
-    description: "Organization login to report on. Defaults to the owner of the repository running the workflow.",
+    description: "Organization(s) to report on \u2014 one login, or a comma-separated list for a single CONSOLIDATED report (repos appear as org/repo). Defaults to the owner of the repository running the workflow.",
     required: false,
     default: "${{ github.repository_owner }}",
     secret: false,
@@ -67450,14 +67450,27 @@ function resolveConfig(opts) {
   const { values, explicit } = readRawInputs(opts.getInput);
   const file = opts.configFile ?? {};
   const d = CONFIG_DEFAULTS;
-  const githubToken = values["github-token"];
-  if (!githubToken) {
+  const githubTokensRaw = parseList(values["github-token"]);
+  if (githubTokensRaw.length === 0) {
     throw new ActionError("E_BAD_INPUT", "github-token is required.", [
       "For org-wide reports use an org fine-grained PAT or a GitHub App token \u2014 the default GITHUB_TOKEN only sees this repository."
     ]);
   }
-  const org = values["org"] || opts.repositoryOwner;
-  if (!org) throw new ActionError("E_BAD_INPUT", "Could not determine the organization to report on.");
+  const orgs = parseList(values["org"] || opts.repositoryOwner);
+  if (orgs.length === 0) throw new ActionError("E_BAD_INPUT", "Could not determine the organization to report on.");
+  let githubTokens;
+  if (githubTokensRaw.length === 1) {
+    githubTokens = orgs.map(() => githubTokensRaw[0]);
+  } else if (githubTokensRaw.length === orgs.length) {
+    githubTokens = githubTokensRaw;
+  } else {
+    throw new ActionError(
+      "E_BAD_INPUT",
+      `github-token has ${githubTokensRaw.length} tokens but org lists ${orgs.length} organizations.`,
+      ["Pass ONE token that can read every org, or exactly one token per org in the same order."]
+    );
+  }
+  const org = orgs.join(" + ");
   const language = parseEnum(
     pick(explicit["language"] ? values["language"] : void 0, file.language, d.language),
     LANGUAGES,
@@ -67540,7 +67553,9 @@ function resolveConfig(opts) {
   }
   return {
     org,
-    githubToken,
+    orgs,
+    githubToken: githubTokens[0],
+    githubTokens,
     timezone,
     language,
     period,
@@ -69238,11 +69253,11 @@ async function searchAll(client2, query, qualifier, opts) {
     after = page.search.pageInfo.endCursor;
   }
 }
-async function listOrgRepos(client2, config, warnings) {
+async function listOrgRepos(client2, config, org, warnings) {
   let raw;
   try {
     const pages = await client2.paginate("GET /orgs/{org}/repos", {
-      org: config.org,
+      org,
       per_page: 100,
       sort: "pushed",
       direction: "desc"
@@ -69256,14 +69271,14 @@ async function listOrgRepos(client2, config, warnings) {
   } catch (error2) {
     const status = error2.status;
     if (status === 404) {
-      throw new ActionError("E_ORG_NOT_FOUND", `Organization "${config.org}" was not found or is not visible to this token.`, [
+      throw new ActionError("E_ORG_NOT_FOUND", `Organization "${org}" was not found or is not visible to this token.`, [
         "Check the org input for typos.",
         "The default GITHUB_TOKEN cannot see the org \u2014 pass an org fine-grained PAT (All repositories: Metadata, Pull requests, Issues, Contents \u2014 read) or a GitHub App token.",
         "For fine-grained PATs the ORG must be the resource owner, and an org admin may need to approve the token."
       ]);
     }
     if (status === 401 || status === 403) {
-      throw new ActionError("E_TOKEN_SCOPE", `GitHub rejected the token for org "${config.org}" (HTTP ${status}).`, [
+      throw new ActionError("E_TOKEN_SCOPE", `GitHub rejected the token for org "${org}" (HTTP ${status}).`, [
         "Verify the token has not expired and has read access to org repositories."
       ]);
     }
@@ -69271,7 +69286,7 @@ async function listOrgRepos(client2, config, warnings) {
   }
   const filtered = raw.filter((r) => !(config.repos.skipArchived && r.archived)).filter((r) => !(config.repos.skipForks && r.fork)).filter((r) => matchesAny(r.name, config.repos.include)).filter((r) => !matchesAny(r.name, config.repos.exclude));
   if (filtered.length === 0) {
-    throw new ActionError("E_BAD_INPUT", `No repositories left after filtering (org has ${raw.length} visible).`, [
+    throw new ActionError("E_BAD_INPUT", `No repositories left after filtering (org "${org}" has ${raw.length} visible).`, [
       `include globs: ${config.repos.include.join(", ")} \u2014 exclude globs: ${config.repos.exclude.join(", ") || "(none)"}`
     ]);
   }
@@ -69310,13 +69325,13 @@ async function collectRepoStats(client2, org, repoNames, window2, warnings) {
   }
   return { commitsByRepo, openPrCountByRepo };
 }
-async function collect(client2, config, window2) {
+async function collectOrg(client2, config, org, window2) {
   const warnings = [];
-  const repos = await listOrgRepos(client2, config, warnings);
+  const repos = await listOrgRepos(client2, config, org, warnings);
   const repoNames = new Set(repos.map((r) => r.name));
   const startIso = toSearchTimestamp(window2.startUtcMs);
   const endIso = toSearchTimestamp(window2.endUtcMs - 1e3);
-  const q = searchQualifiers(config.org, startIso, endIso);
+  const q = searchQualifiers(org, startIso, endIso);
   const windowCap = Math.min(config.limits.maxPrs, SEARCH_RESULT_CAP);
   const [prsOpenedRes, prsMergedRes, prsClosedRes, issuesOpenedRes, issuesClosedRes, openPrsRes] = [
     await searchAll(client2, SEARCH_PRS_QUERY, q.prsOpened, {
@@ -69353,14 +69368,14 @@ async function collect(client2, config, window2) {
   const inScope = (items) => items.filter((x) => repoNames.has(x.repo));
   const { commitsByRepo, openPrCountByRepo } = await collectRepoStats(
     client2,
-    config.org,
+    org,
     repos.map((r) => r.name),
     window2,
     warnings
   );
   const openPrTotalCount = Object.values(openPrCountByRepo).reduce((a, b) => a + b, 0);
   return {
-    org: config.org,
+    org,
     window: window2,
     repos,
     prsOpened: inScope(prsOpenedRes.nodes.map(toPrLite)),
@@ -69374,6 +69389,50 @@ async function collect(client2, config, window2) {
     openPrCountByRepo,
     warnings
   };
+}
+function mergeOrgData(perOrg) {
+  if (perOrg.length === 1) return perOrg[0];
+  const qualify = (org, repo) => `${org}/${repo}`;
+  const merged = {
+    org: perOrg.map((d) => d.org).join(" + "),
+    window: perOrg[0].window,
+    repos: [],
+    prsOpened: [],
+    prsMerged: [],
+    prsClosedUnmerged: [],
+    openPrs: [],
+    openPrTotalCount: 0,
+    issuesOpened: [],
+    issuesClosed: [],
+    commitsByRepo: {},
+    openPrCountByRepo: {},
+    warnings: []
+  };
+  for (const data of perOrg) {
+    const org = data.org;
+    merged.repos.push(...data.repos.map((r) => ({ ...r, name: qualify(org, r.name) })));
+    merged.prsOpened.push(...data.prsOpened.map((pr) => ({ ...pr, repo: qualify(org, pr.repo) })));
+    merged.prsMerged.push(...data.prsMerged.map((pr) => ({ ...pr, repo: qualify(org, pr.repo) })));
+    merged.prsClosedUnmerged.push(...data.prsClosedUnmerged.map((pr) => ({ ...pr, repo: qualify(org, pr.repo) })));
+    merged.openPrs.push(...data.openPrs.map((pr) => ({ ...pr, repo: qualify(org, pr.repo) })));
+    merged.openPrTotalCount += data.openPrTotalCount;
+    merged.issuesOpened.push(...data.issuesOpened.map((i) => ({ ...i, repo: qualify(org, i.repo) })));
+    merged.issuesClosed.push(...data.issuesClosed.map((i) => ({ ...i, repo: qualify(org, i.repo) })));
+    for (const [repo, count] of Object.entries(data.commitsByRepo)) merged.commitsByRepo[qualify(org, repo)] = count;
+    for (const [repo, count] of Object.entries(data.openPrCountByRepo)) {
+      merged.openPrCountByRepo[qualify(org, repo)] = count;
+    }
+    merged.warnings.push(...data.warnings.map((w) => `[${org}] ${w}`));
+  }
+  merged.openPrs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return merged;
+}
+async function collect(orgClients, config, window2) {
+  const perOrg = [];
+  for (const { org, client: client2 } of orgClients) {
+    perOrg.push(await collectOrg(client2, config, org, window2));
+  }
+  return mergeOrgData(perOrg);
 }
 
 // src/llm/types.ts
@@ -113284,12 +113343,14 @@ function fillSubject(template, report) {
 }
 async function run() {
   const nowMs = Date.now();
-  const githubToken = getInput("github-token");
+  const rawTokens = parseList(getInput("github-token"));
   const configFilePath = getInput("config-file") || ".github/weekly-report.yml";
-  for (const key of ["github-token", "anthropic-api-key", "openai-api-key", "slack-webhook-url", "resend-api-key"]) {
+  for (const key of ["anthropic-api-key", "openai-api-key", "slack-webhook-url", "resend-api-key"]) {
     const value = getInput(key);
     if (value) setSecret(value);
   }
+  for (const token of rawTokens) setSecret(token);
+  const githubToken = rawTokens[0] ?? "";
   const client2 = createClient({ token: githubToken, onWarning: (m) => warning(m) });
   const repository = process.env.GITHUB_REPOSITORY ?? "";
   const fileResult = repository && githubToken ? await fetchConfigFile(client2, repository, configFilePath) : { config: void 0, warnings: [] };
@@ -113315,7 +113376,11 @@ async function run() {
     endDate: config.endDate
   });
   info(`Window: ${window2.startDate} \u2192 ${window2.endDate} (${config.timezone})`);
-  const data = await collect(client2, config, window2);
+  const orgClients = config.orgs.map((org, i) => ({
+    org,
+    client: config.githubTokens[i] === config.githubToken ? client2 : createClient({ token: config.githubTokens[i], onWarning: (m) => warning(m) })
+  }));
+  const data = await collect(orgClients, config, window2);
   info(
     `Collected: ${data.repos.length} repos, ${data.prsOpened.length} PRs opened, ${data.prsMerged.length} merged, ${data.issuesOpened.length}/${data.issuesClosed.length} issues opened/closed.`
   );
@@ -113361,7 +113426,7 @@ async function run() {
     if (!summary2.ok) warning(summary2.detail);
   }
   if (config.output.artifact) {
-    const artifactName = config.output.artifactName.replaceAll("{org}", config.org);
+    const artifactName = config.output.artifactName.replaceAll("{org}", config.orgs.join("-"));
     const artifact = await uploadReportArtifact(artifactName, files);
     deliveryStatus.artifact = artifact.ok ? "ok" : "failed";
     if (!artifact.ok) warning(artifact.detail);

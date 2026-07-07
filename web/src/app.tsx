@@ -201,10 +201,20 @@ export function App() {
               <TextInput mono value={v.org} onInput={(x) => set({ org: x })} placeholder="acme" />
             </Field>
             <Field
-              label="Additional organizations (matrix)"
-              hint="Each org runs as its own job with its own token — one failing never cancels the others."
+              label="Additional organizations"
+              hint="Consolidated: one merged report (repos as org/repo). Matrix: one report per org, each with its own channel/language."
             >
               <div>
+                {v.extraOrgs.length > 0 && (
+                  <Segmented
+                    value={v.multiOrgMode}
+                    onChange={(multiOrgMode) => set({ multiOrgMode })}
+                    options={[
+                      { value: 'consolidated', label: 'One consolidated report' },
+                      { value: 'matrix', label: 'Separate report per org' }
+                    ]}
+                  />
+                )}
                 {v.extraOrgs.map((entry, i) => {
                   const patch = (p: Partial<OrgEntry>) => {
                     const next = v.extraOrgs.slice();
@@ -227,7 +237,7 @@ export function App() {
                           onInput={(e) => patch({ tokenSecret: (e.target as HTMLInputElement).value })}
                         />
                       )}
-                      {v.slackEnabled && (
+                      {v.multiOrgMode === 'matrix' && v.slackEnabled && (
                         <input
                           class="mono"
                           placeholder="SLACK_SECRET"
@@ -235,13 +245,15 @@ export function App() {
                           onInput={(e) => patch({ slackSecret: (e.target as HTMLInputElement).value })}
                         />
                       )}
-                      <select
-                        value={entry.language}
-                        onChange={(e) => patch({ language: (e.target as HTMLSelectElement).value as OrgEntry['language'] })}
-                      >
-                        <option value="en">en</option>
-                        <option value="es">es</option>
-                      </select>
+                      {v.multiOrgMode === 'matrix' && (
+                        <select
+                          value={entry.language}
+                          onChange={(e) => patch({ language: (e.target as HTMLSelectElement).value as OrgEntry['language'] })}
+                        >
+                          <option value="en">en</option>
+                          <option value="es">es</option>
+                        </select>
+                      )}
                       <button
                         type="button"
                         class="btn"

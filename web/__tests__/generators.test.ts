@@ -98,6 +98,7 @@ describe('generateWorkflow', () => {
 describe('multi-org matrix', () => {
   const multi = makeState({
     org: 'ombustudio',
+    multiOrgMode: 'matrix',
     extraOrgs: [
       { org: 'cliente-x', tokenSecret: 'CLIENTEX_TOKEN', slackSecret: 'CLIENTEX_SLACK', language: 'en' }
     ]
@@ -158,6 +159,43 @@ describe('multi-org matrix', () => {
     const names = secretsChecklist(multi).map((s) => s.name);
     expect(names).toContain('CLIENTEX_TOKEN');
     expect(names).toContain('CLIENTEX_SLACK');
+  });
+});
+
+describe('multi-org consolidated (default mode)', () => {
+  const consolidated = makeState({
+    org: 'ombustudio',
+    extraOrgs: [{ org: 'cliente-x', tokenSecret: 'CLIENTEX_TOKEN', slackSecret: 'SLACK_WEBHOOK_URL', language: 'en' }]
+  });
+
+  it('emits ONE job with org list + zipped token list (no matrix)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parsed = parse(generateWorkflow(consolidated)) as any;
+    const job = parsed['jobs']['report'];
+    expect(job['strategy']).toBeUndefined();
+    const withEntries = job['steps'].at(-1)['with'];
+    expect(withEntries['org']).toBe('ombustudio, cliente-x');
+    expect(withEntries['github-token']).toBe(
+      '${{ secrets.ORG_REPORT_GITHUB_TOKEN }},${{ secrets.CLIENTEX_TOKEN }}'
+    );
+    expect(withEntries['slack-webhook-url']).toBe('${{ secrets.SLACK_WEBHOOK_URL }}');
+  });
+
+  it('drift guard: consolidated with: keys stay in the registry', () => {
+    for (const key of Object.keys(buildWithEntries(consolidated))) {
+      expect(KNOWN_KEYS.has(key), `unknown input "${key}"`).toBe(true);
+    }
+  });
+
+  it('lint blocks GitHub App auth in consolidated mode', () => {
+    const errors = lint({ ...consolidated, auth: 'app' }).filter((w) => w.level === 'error');
+    expect(errors.map((w) => w.message).join(' ')).toMatch(/Consolidated mode needs one PAT per org/);
+  });
+
+  it('secrets checklist: per-org tokens yes, per-org slack no', () => {
+    const names = secretsChecklist(consolidated).map((s) => s.name);
+    expect(names).toContain('CLIENTEX_TOKEN');
+    expect(names.filter((n) => n === 'SLACK_WEBHOOK_URL')).toHaveLength(1);
   });
 });
 

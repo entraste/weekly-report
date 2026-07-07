@@ -16,8 +16,14 @@ export type ResolvedHighlights = {
 };
 
 export interface ResolvedConfig {
+  /** Display label — single org login, or "orgA + orgB" for consolidated reports. */
   org: string;
+  /** All orgs in the report (≥1). */
+  orgs: string[];
+  /** First token — used for repo-local calls (config file fetch). */
   githubToken: string;
+  /** One per org (same token repeated when a single token was provided). */
+  githubTokens: string[];
   timezone: string;
   language: Language;
   period: Period;

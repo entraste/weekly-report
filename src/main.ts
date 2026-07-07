@@ -9,6 +9,7 @@ import * as core from '@actions/core';
 import { fetchConfigFile } from './config/file-config.js';
 import { resolveConfig } from './config/resolve.js';
 import { createClient } from './github/client.js';
+import { parseList } from './util/globs.js';
 import { collect } from './github/collect.js';
 import { generateNarrative } from './llm/narrative.js';
 import { aggregate } from './metrics/aggregate.js';
@@ -43,12 +44,14 @@ export async function run(): Promise<void> {
   const nowMs = Date.now();
 
   // --- Config: token + config file first, then full resolution ---
-  const githubToken = core.getInput('github-token');
+  const rawTokens = parseList(core.getInput('github-token'));
   const configFilePath = core.getInput('config-file') || '.github/weekly-report.yml';
-  for (const key of ['github-token', 'anthropic-api-key', 'openai-api-key', 'slack-webhook-url', 'resend-api-key']) {
+  for (const key of ['anthropic-api-key', 'openai-api-key', 'slack-webhook-url', 'resend-api-key']) {
     const value = core.getInput(key);
     if (value) core.setSecret(value);
   }
+  for (const token of rawTokens) core.setSecret(token);
+  const githubToken = rawTokens[0] ?? '';
 
   const client = createClient({ token: githubToken, onWarning: (m) => core.warning(m) });
 
@@ -88,7 +91,14 @@ export async function run(): Promise<void> {
   core.info(`Window: ${window.startDate} → ${window.endDate} (${config.timezone})`);
 
   // --- Collect + aggregate (deterministic core) ---
-  const data = await collect(client, config, window);
+  const orgClients = config.orgs.map((org, i) => ({
+    org,
+    client:
+      config.githubTokens[i] === config.githubToken
+        ? client
+        : createClient({ token: config.githubTokens[i]!, onWarning: (m) => core.warning(m) })
+  }));
+  const data = await collect(orgClients, config, window);
   core.info(
     `Collected: ${data.repos.length} repos, ${data.prsOpened.length} PRs opened, ${data.prsMerged.length} merged, ` +
       `${data.issuesOpened.length}/${data.issuesClosed.length} issues opened/closed.`
@@ -150,7 +160,7 @@ export async function run(): Promise<void> {
   // Dry runs DO upload the artifact — the input contract promises "summary +
   // artifact" so users can inspect the rendered report without delivering it.
   if (config.output.artifact) {
-    const artifactName = config.output.artifactName.replaceAll('{org}', config.org);
+    const artifactName = config.output.artifactName.replaceAll('{org}', config.orgs.join('-'));
     const artifact = await uploadReportArtifact(artifactName, files);
     deliveryStatus.artifact = artifact.ok ? 'ok' : 'failed';
     if (!artifact.ok) core.warning(artifact.detail);

@@ -88,14 +88,19 @@ export function lint(state: ConfiguratorState): Warning[] {
           message: `Additional org #${i + 1}: token secret name "${entry.tokenSecret}" is invalid.`
         });
       }
-      if (state.slackEnabled && !VALID_SECRET_NAME.test(entry.slackSecret)) {
+      if (state.multiOrgMode === 'matrix' && state.slackEnabled && !VALID_SECRET_NAME.test(entry.slackSecret)) {
         warnings.push({
           level: 'error',
           message: `Additional org #${i + 1}: Slack secret name "${entry.slackSecret}" is invalid.`
         });
       }
     });
-    if (state.auth === 'app') {
+    if (state.multiOrgMode === 'consolidated' && state.auth === 'app') {
+      warnings.push({
+        level: 'error',
+        message: 'Consolidated mode needs one PAT per org — GitHub App tokens are per-org, so switch to Fine-grained PAT or use Matrix mode.'
+      });
+    } else if (state.auth === 'app') {
       warnings.push({
         level: 'info',
         message: 'GitHub App + matrix: install the same App on EVERY organization listed — one APP_ID/private key covers all of them.'
@@ -103,7 +108,10 @@ export function lint(state: ConfiguratorState): Warning[] {
     } else {
       warnings.push({
         level: 'info',
-        message: 'Each org needs its own fine-grained PAT (resource owner = that org) stored under the secret name of its row.'
+        message:
+          state.multiOrgMode === 'consolidated'
+            ? 'Consolidated: ONE report merges every org (repos shown as org/repo). Each org still needs its own PAT secret.'
+            : 'Matrix: each org runs as its own job and sends its own report. Each org needs its own PAT secret.'
       });
     }
   }

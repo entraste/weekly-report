@@ -143,12 +143,13 @@ async function searchAll<T>(
 export async function listOrgRepos(
   client: GitHubClient,
   config: ResolvedConfig,
+  org: string,
   warnings: string[]
 ): Promise<RepoInfo[]> {
   let raw: Array<{ name: string; archived: boolean; fork: boolean; private: boolean }>;
   try {
     const pages = await client.paginate('GET /orgs/{org}/repos', {
-      org: config.org,
+      org,
       per_page: 100,
       sort: 'pushed',
       direction: 'desc'
@@ -162,14 +163,14 @@ export async function listOrgRepos(
   } catch (error) {
     const status = (error as { status?: number }).status;
     if (status === 404) {
-      throw new ActionError('E_ORG_NOT_FOUND', `Organization "${config.org}" was not found or is not visible to this token.`, [
+      throw new ActionError('E_ORG_NOT_FOUND', `Organization "${org}" was not found or is not visible to this token.`, [
         'Check the org input for typos.',
         'The default GITHUB_TOKEN cannot see the org — pass an org fine-grained PAT (All repositories: Metadata, Pull requests, Issues, Contents — read) or a GitHub App token.',
         'For fine-grained PATs the ORG must be the resource owner, and an org admin may need to approve the token.'
       ]);
     }
     if (status === 401 || status === 403) {
-      throw new ActionError('E_TOKEN_SCOPE', `GitHub rejected the token for org "${config.org}" (HTTP ${status}).`, [
+      throw new ActionError('E_TOKEN_SCOPE', `GitHub rejected the token for org "${org}" (HTTP ${status}).`, [
         'Verify the token has not expired and has read access to org repositories.'
       ]);
     }
@@ -183,7 +184,7 @@ export async function listOrgRepos(
     .filter((r) => !matchesAny(r.name, config.repos.exclude));
 
   if (filtered.length === 0) {
-    throw new ActionError('E_BAD_INPUT', `No repositories left after filtering (org has ${raw.length} visible).`, [
+    throw new ActionError('E_BAD_INPUT', `No repositories left after filtering (org "${org}" has ${raw.length} visible).`, [
       `include globs: ${config.repos.include.join(', ')} — exclude globs: ${config.repos.exclude.join(', ') || '(none)'}`
     ]);
   }
@@ -246,19 +247,20 @@ async function collectRepoStats(
   return { commitsByRepo, openPrCountByRepo };
 }
 
-export async function collect(
+async function collectOrg(
   client: GitHubClient,
   config: ResolvedConfig,
+  org: string,
   window: ReportWindow
 ): Promise<CollectedData> {
   const warnings: string[] = [];
-  const repos = await listOrgRepos(client, config, warnings);
+  const repos = await listOrgRepos(client, config, org, warnings);
   const repoNames = new Set(repos.map((r) => r.name));
 
   const startIso = toSearchTimestamp(window.startUtcMs);
   // Search ranges are inclusive on both ends; subtract 1s from the exclusive bound.
   const endIso = toSearchTimestamp(window.endUtcMs - 1000);
-  const q = searchQualifiers(config.org, startIso, endIso);
+  const q = searchQualifiers(org, startIso, endIso);
   const windowCap = Math.min(config.limits.maxPrs, SEARCH_RESULT_CAP);
 
   const [prsOpenedRes, prsMergedRes, prsClosedRes, issuesOpenedRes, issuesClosedRes, openPrsRes] = [
@@ -299,7 +301,7 @@ export async function collect(
 
   const { commitsByRepo, openPrCountByRepo } = await collectRepoStats(
     client,
-    config.org,
+    org,
     repos.map((r) => r.name),
     window,
     warnings
@@ -310,7 +312,7 @@ export async function collect(
   const openPrTotalCount = Object.values(openPrCountByRepo).reduce((a, b) => a + b, 0);
 
   return {
-    org: config.org,
+    org,
     window,
     repos,
     prsOpened: inScope(prsOpenedRes.nodes.map(toPrLite)),
@@ -324,4 +326,70 @@ export async function collect(
     openPrCountByRepo,
     warnings
   };
+}
+
+
+/**
+ * Consolidated merge: with several orgs, repo names become "org/repo" so
+ * tables, highlights and the LLM payload stay unambiguous. People merge
+ * naturally (the same login aggregates across orgs).
+ */
+export function mergeOrgData(perOrg: CollectedData[]): CollectedData {
+  if (perOrg.length === 1) return perOrg[0]!;
+  const qualify = (org: string, repo: string): string => `${org}/${repo}`;
+
+  const merged: CollectedData = {
+    org: perOrg.map((d) => d.org).join(' + '),
+    window: perOrg[0]!.window,
+    repos: [],
+    prsOpened: [],
+    prsMerged: [],
+    prsClosedUnmerged: [],
+    openPrs: [],
+    openPrTotalCount: 0,
+    issuesOpened: [],
+    issuesClosed: [],
+    commitsByRepo: {},
+    openPrCountByRepo: {},
+    warnings: []
+  };
+
+  for (const data of perOrg) {
+    const org = data.org;
+    merged.repos.push(...data.repos.map((r) => ({ ...r, name: qualify(org, r.name) })));
+    merged.prsOpened.push(...data.prsOpened.map((pr) => ({ ...pr, repo: qualify(org, pr.repo) })));
+    merged.prsMerged.push(...data.prsMerged.map((pr) => ({ ...pr, repo: qualify(org, pr.repo) })));
+    merged.prsClosedUnmerged.push(...data.prsClosedUnmerged.map((pr) => ({ ...pr, repo: qualify(org, pr.repo) })));
+    merged.openPrs.push(...data.openPrs.map((pr) => ({ ...pr, repo: qualify(org, pr.repo) })));
+    merged.openPrTotalCount += data.openPrTotalCount;
+    merged.issuesOpened.push(...data.issuesOpened.map((i) => ({ ...i, repo: qualify(org, i.repo) })));
+    merged.issuesClosed.push(...data.issuesClosed.map((i) => ({ ...i, repo: qualify(org, i.repo) })));
+    for (const [repo, count] of Object.entries(data.commitsByRepo)) merged.commitsByRepo[qualify(org, repo)] = count;
+    for (const [repo, count] of Object.entries(data.openPrCountByRepo)) {
+      merged.openPrCountByRepo[qualify(org, repo)] = count;
+    }
+    merged.warnings.push(...data.warnings.map((w) => `[${org}] ${w}`));
+  }
+
+  // Oldest-first ordering must hold across orgs for the open-PR highlights.
+  merged.openPrs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return merged;
+}
+
+export interface OrgClient {
+  org: string;
+  client: GitHubClient;
+}
+
+/** Collect every org (each with its own client/token) and merge. */
+export async function collect(
+  orgClients: OrgClient[],
+  config: ResolvedConfig,
+  window: ReportWindow
+): Promise<CollectedData> {
+  const perOrg: CollectedData[] = [];
+  for (const { org, client } of orgClients) {
+    perOrg.push(await collectOrg(client, config, org, window));
+  }
+  return mergeOrgData(perOrg);
 }
