@@ -1,7 +1,7 @@
 name: Weekly report
 on:
   schedule:
-    - cron: 17 9 * * 1 # GitHub cron runs in UTC and is best-effort (5-30 min delays are normal)
+    - cron: 15 12 * * 5 # GitHub cron runs in UTC and is best-effort (5-30 min delays are normal)
   workflow_dispatch:
     inputs:
       start-date:
@@ -24,5 +24,7 @@ jobs:
           llm-provider: anthropic
           language: es
           slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          slack-bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
+          slack-channel: C08KPEWFQH0
           start-date: ${{ inputs.start-date }}
           end-date: ${{ inputs.end-date }}
