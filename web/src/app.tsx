@@ -462,6 +462,12 @@ export function App() {
                     <UpdateInGitHubButton url={editUrl(v.targetRepo, WORKFLOW_FILENAME)!} text={workflowYaml.value} />
                   )}
                 </div>
+                {!runWorkflowUrl(v.targetRepo) && (
+                  <p class="note">
+                    Set <strong>Target repo</strong> in step 1 (e.g. <code>ombustudio/weekly-report</code>) to enable
+                    the one-click <em>Create in GitHub</em>, <em>Update in GitHub</em> and <em>▶ Run now</em> buttons.
+                  </p>
+                )}
                 {runWorkflowUrl(v.targetRepo) && (
                   <div class="run-row">
                     <a class="btn run" href={runWorkflowUrl(v.targetRepo)!} target="_blank" rel="noopener">
