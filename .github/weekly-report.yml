@@ -1,1 +1,7 @@
-
+# Rich configuration for Org Weekly Report (AI) — every key optional.
+# Secrets NEVER go in this file; pass them as action inputs.
+highlights:
+  stale-prs:
+    threshold-days: 30
+repos:
+  skip-forks: false
