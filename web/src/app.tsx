@@ -10,7 +10,14 @@ import { generateConfigFile, needsConfigFile } from './generator/config-file.js'
 import { lint } from './generator/lint.js';
 import { secretsChecklist } from './generator/secrets.js';
 import { generateWorkflow } from './generator/workflow.js';
-import { state, update } from './state.js';
+import {
+  CONFIG_FILENAME,
+  WORKFLOW_FILENAME,
+  editUrl,
+  quickCreateUrl,
+  runWorkflowUrl
+} from './generator/links.js';
+import { resetState, restoredFromSave, state, update } from './state.js';
 import type { Cadence, ConfiguratorState } from './state.js';
 
 const HIGHLIGHT_LABELS: Record<HighlightId, string> = {
@@ -97,6 +104,27 @@ function Section(props: { step: number; title: string; children: ComponentChildr
   );
 }
 
+/** Copies the content, then opens GitHub's editor for the existing file. */
+function UpdateInGitHubButton(props: { url: string; text: string }) {
+  const copied = useSignal(false);
+  return (
+    <a
+      class="btn"
+      href={props.url}
+      target="_blank"
+      rel="noopener"
+      title="Copies the file, then opens GitHub's editor — select all, paste, commit."
+      onClick={() => {
+        void navigator.clipboard.writeText(props.text);
+        copied.value = true;
+        setTimeout(() => (copied.value = false), 2500);
+      }}
+    >
+      {copied.value ? '✓ Copied — paste & commit' : 'Update in GitHub ↗'}
+    </a>
+  );
+}
+
 function CopyButton(props: { text: string; label?: string }) {
   const copied = useSignal(false);
   return (
@@ -113,12 +141,6 @@ function CopyButton(props: { text: string; label?: string }) {
       {copied.value ? '✓ Copied' : (props.label ?? 'Copy')}
     </button>
   );
-}
-
-function quickCreateUrl(targetRepo: string, filename: string, content: string): string | null {
-  if (!/^[\w.-]+\/[\w.-]+$/.test(targetRepo)) return null;
-  const url = `https://github.com/${targetRepo}/new/main?filename=${encodeURIComponent(filename)}&value=${encodeURIComponent(content)}`;
-  return url.length > 8000 ? null : url;
 }
 
 export function App() {
@@ -146,6 +168,24 @@ export function App() {
           Spanish. This page generates YAML only; <strong>your secrets never leave GitHub</strong>.
         </p>
       </header>
+
+      <div class="autosave-bar">
+        <span>
+          {restoredFromSave ? '↺ Restored your saved configuration.' : ''} Changes auto-save in this browser — no
+          secrets are ever stored.
+        </span>
+        <button
+          type="button"
+          class="btn"
+          onClick={() => {
+            if (confirm('Reset the form to defaults? Your saved configuration in this browser will be cleared.')) {
+              resetState();
+            }
+          }}
+        >
+          Reset form
+        </button>
+      </div>
 
       <main class="columns">
         <div class="form-column">
@@ -406,19 +446,32 @@ export function App() {
             {activeTab === 'workflow' && (
               <div class="output">
                 <div class="output-actions">
-                  <span class="filename mono">.github/workflows/weekly-report.yml</span>
+                  <span class="filename mono">{WORKFLOW_FILENAME}</span>
                   <CopyButton text={workflowYaml.value} />
-                  {quickCreateUrl(v.targetRepo, '.github/workflows/weekly-report.yml', workflowYaml.value) && (
+                  {quickCreateUrl(v.targetRepo, WORKFLOW_FILENAME, workflowYaml.value) && (
                     <a
                       class="btn primary"
                       target="_blank"
                       rel="noopener"
-                      href={quickCreateUrl(v.targetRepo, '.github/workflows/weekly-report.yml', workflowYaml.value)!}
+                      href={quickCreateUrl(v.targetRepo, WORKFLOW_FILENAME, workflowYaml.value)!}
                     >
                       Create in GitHub ↗
                     </a>
                   )}
+                  {editUrl(v.targetRepo, WORKFLOW_FILENAME) && (
+                    <UpdateInGitHubButton url={editUrl(v.targetRepo, WORKFLOW_FILENAME)!} text={workflowYaml.value} />
+                  )}
                 </div>
+                {runWorkflowUrl(v.targetRepo) && (
+                  <div class="run-row">
+                    <a class="btn run" href={runWorkflowUrl(v.targetRepo)!} target="_blank" rel="noopener">
+                      ▶ Run now ↗
+                    </a>
+                    <span class="run-hint">
+                      Opens GitHub's <em>Run workflow</em> panel — works once this file is committed on main.
+                    </span>
+                  </div>
+                )}
                 <pre>{workflowYaml.value}</pre>
               </div>
             )}
@@ -426,17 +479,20 @@ export function App() {
             {activeTab === 'config' && configYaml.value && (
               <div class="output">
                 <div class="output-actions">
-                  <span class="filename mono">.github/weekly-report.yml</span>
+                  <span class="filename mono">{CONFIG_FILENAME}</span>
                   <CopyButton text={configYaml.value} />
-                  {quickCreateUrl(v.targetRepo, '.github/weekly-report.yml', configYaml.value) && (
+                  {quickCreateUrl(v.targetRepo, CONFIG_FILENAME, configYaml.value) && (
                     <a
                       class="btn primary"
                       target="_blank"
                       rel="noopener"
-                      href={quickCreateUrl(v.targetRepo, '.github/weekly-report.yml', configYaml.value)!}
+                      href={quickCreateUrl(v.targetRepo, CONFIG_FILENAME, configYaml.value)!}
                     >
                       Create in GitHub ↗
                     </a>
+                  )}
+                  {editUrl(v.targetRepo, CONFIG_FILENAME) && (
+                    <UpdateInGitHubButton url={editUrl(v.targetRepo, CONFIG_FILENAME)!} text={configYaml.value} />
                   )}
                 </div>
                 <pre>{configYaml.value}</pre>

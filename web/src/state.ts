@@ -93,10 +93,96 @@ export const DEFAULT_STATE: ConfiguratorState = {
   emailFrom: ''
 };
 
-export const state = signal<ConfiguratorState>({ ...DEFAULT_STATE });
+// ---------------------------------------------------------------------------
+// Persistence: the form auto-saves to localStorage (config only — this state
+// never holds secret VALUES, so nothing sensitive is stored). Saved data is
+// re-validated on load so a stale/corrupt blob can never break the generators.
+// ---------------------------------------------------------------------------
+export const STORAGE_KEY = 'ombupulse-configurator-v1';
+
+const ENUM_FIELDS: Partial<Record<keyof ConfiguratorState, readonly string[]>> = {
+  auth: ['pat', 'app'],
+  cadence: ['daily', 'weekly', 'biweekly', 'monthly'],
+  llm: ['anthropic', 'openai', 'none'],
+  language: ['en', 'es'],
+  biweeklyAnchor: ['even', 'odd'],
+  tone: ['professional-warm', 'neutral', 'playful']
+};
+
+export function sanitizeSaved(saved: unknown): Partial<ConfiguratorState> {
+  if (typeof saved !== 'object' || saved === null) return {};
+  const raw = saved as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, defVal] of Object.entries(DEFAULT_STATE as unknown as Record<string, unknown>)) {
+    const val = raw[key];
+    if (val === undefined || typeof val !== typeof defVal) continue;
+    const allowed = ENUM_FIELDS[key as keyof ConfiguratorState];
+    if (allowed && !allowed.includes(val as string)) continue;
+    if (typeof defVal === 'object' && defVal !== null) {
+      // Nested objects (levels, highlights): keep only known keys, matching types.
+      const merged: Record<string, unknown> = { ...(defVal as Record<string, unknown>) };
+      for (const k of Object.keys(merged)) {
+        const v = (val as Record<string, unknown>)[k];
+        if (v !== undefined && typeof v === typeof merged[k]) merged[k] = v;
+      }
+      out[key] = merged;
+    } else {
+      out[key] = val;
+    }
+  }
+  // Numeric clamps so a hand-edited blob cannot produce an invalid cron.
+  if (typeof out.hour === 'number') out.hour = Math.min(23, Math.max(0, Math.trunc(out.hour as number)));
+  if (typeof out.minute === 'number') out.minute = Math.min(59, Math.max(0, Math.trunc(out.minute as number)));
+  if (typeof out.dayOfWeek === 'number') out.dayOfWeek = Math.min(7, Math.max(1, Math.trunc(out.dayOfWeek as number)));
+  return out as Partial<ConfiguratorState>;
+}
+
+/** Functional localStorage or null (Node exposes a stub global; browsers may block it). */
+function storage(): Storage | null {
+  try {
+    if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') return null;
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function loadSavedState(): Partial<ConfiguratorState> {
+  try {
+    const raw = storage()?.getItem(STORAGE_KEY);
+    return raw ? sanitizeSaved(JSON.parse(raw)) : {};
+  } catch {
+    return {};
+  }
+}
+
+export const state = signal<ConfiguratorState>({ ...DEFAULT_STATE, ...loadSavedState() });
+
+/** True when the current state came (partly) from a previous session. */
+export const restoredFromSave = ((): boolean => {
+  try {
+    return storage()?.getItem(STORAGE_KEY) !== null && storage() !== null;
+  } catch {
+    return false;
+  }
+})();
 
 export function update(patch: Partial<ConfiguratorState>): void {
   state.value = { ...state.value, ...patch };
+  try {
+    storage()?.setItem(STORAGE_KEY, JSON.stringify(state.value));
+  } catch {
+    // Storage full/blocked — the form still works, it just won't persist.
+  }
+}
+
+export function resetState(): void {
+  state.value = { ...DEFAULT_STATE };
+  try {
+    storage()?.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 /** All input keys the generator may emit — used by the drift test. */
