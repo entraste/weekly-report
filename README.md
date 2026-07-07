@@ -76,6 +76,28 @@ Store it as a secret (e.g. `ORG_REPORT_GITHUB_TOKEN`) and pass it as `github-tok
 
 **Outputs**: `report-markdown-path`, `report-html-path`, `metrics-json-path`, `delivery-status` (JSON per channel), `llm-usage` (tokens + estimated cost).
 
+## Multiple organizations
+
+Run the action once per org with a matrix — each org gets its own token (fine-grained PATs are single-org), report, and optionally its own Slack channel and language. One org failing never cancels the others (`fail-fast: false`). Full recipe: [`examples/workflow-multi-org.yml`](examples/workflow-multi-org.yml).
+
+```yaml
+strategy:
+  fail-fast: false
+  matrix:
+    include:
+      - { org: acme, token_secret: ACME_TOKEN, slack_secret: ACME_SLACK, language: en }
+      - { org: globex, token_secret: GLOBEX_TOKEN, slack_secret: GLOBEX_SLACK, language: es }
+steps:
+  - uses: ombustudio/weekly-report@v1
+    with:
+      org: ${{ matrix.org }}
+      github-token: ${{ secrets[matrix.token_secret] }}
+      slack-webhook-url: ${{ secrets[matrix.slack_secret] }}
+      language: ${{ matrix.language }}
+```
+
+> Tip: a single **classic** PAT (`repo` + `read:org`) from a user who belongs to all the orgs can power every matrix entry with one secret — coarser permissions, less setup.
+
 ## Rich configuration
 
 Simple knobs are inputs; nested tuning lives in an optional `.github/weekly-report.yml` — highlight thresholds, bot patterns, person opt-outs, LLM tone, output caps and more. Full annotated reference: [`examples/weekly-report.config.yml`](examples/weekly-report.config.yml).

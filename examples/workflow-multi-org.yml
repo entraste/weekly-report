@@ -1,0 +1,48 @@
+# One workflow, several organizations: a matrix runs the action once per org,
+# each with its own token (fine-grained PATs are scoped to a single org) and —
+# optionally — its own Slack channel, language or recipients.
+#
+# Token options per org:
+#   a) one org-owned fine-grained PAT per org (recommended; shown here), or
+#   b) a single CLASSIC PAT with repo+read:org from a user in all orgs —
+#      then every matrix entry can share the same secret.
+name: Weekly report (multi-org)
+
+on:
+  schedule:
+    - cron: '17 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      start-date: { description: 'Custom window start (YYYY-MM-DD, optional)', required: false }
+      end-date: { description: 'Custom window end (YYYY-MM-DD, optional)', required: false }
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # one org failing must not cancel the others
+      matrix:
+        include:
+          - org: ombustudio
+            token_secret: ORG_REPORT_GITHUB_TOKEN
+            slack_secret: SLACK_WEBHOOK_URL
+            language: es
+          - org: otra-org # ← duplicate this block per additional org
+            token_secret: OTRAORG_REPORT_TOKEN
+            slack_secret: OTRAORG_SLACK_WEBHOOK
+            language: en
+    name: report ${{ matrix.org }}
+    steps:
+      - uses: ombustudio/weekly-report@main
+        with:
+          org: ${{ matrix.org }}
+          github-token: ${{ secrets[matrix.token_secret] }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          slack-webhook-url: ${{ secrets[matrix.slack_secret] }}
+          language: ${{ matrix.language }}
+          timezone: America/Montevideo
+          start-date: ${{ inputs.start-date }}
+          end-date: ${{ inputs.end-date }}
