@@ -16,7 +16,7 @@ jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-      - uses: entraste/weekly-report@v1
+      - uses: ombustudio/weekly-report@v1
         with:
           github-token: ${{ secrets.ORG_REPORT_GITHUB_TOKEN }}
           org: entraste
